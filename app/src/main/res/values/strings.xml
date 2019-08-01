@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">purefm</string>
+    <string name="now_on_air">Now On Air: %s</string>
+</resources>
