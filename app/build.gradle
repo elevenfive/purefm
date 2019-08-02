@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "de.purefm"
-        minSdkVersion 22
+        minSdkVersion 21
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
@@ -36,6 +36,7 @@ dependencies {
     implementation 'com.google.android.exoplayer:exoplayer-core:2.10.3'
     implementation 'com.google.android.exoplayer:exoplayer-dash:2.10.3'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.10.3'
+    implementation 'com.google.android.exoplayer:extension-cast:2.10.3'
 
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test:runner:1.2.0'

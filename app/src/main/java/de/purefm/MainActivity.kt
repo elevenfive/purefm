@@ -4,13 +4,14 @@ import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
-import android.view.Surface
+import android.view.Menu
 import com.google.android.exoplayer2.*
+import com.google.android.exoplayer2.C.TIME_UNSET
 import com.google.android.exoplayer2.analytics.AnalyticsListener
 import com.google.android.exoplayer2.audio.AudioAttributes
-import com.google.android.exoplayer2.decoder.DecoderCounters
+import com.google.android.exoplayer2.ext.cast.CastPlayer
+import com.google.android.exoplayer2.ext.cast.SessionAvailabilityListener
 import com.google.android.exoplayer2.metadata.Metadata
-import com.google.android.exoplayer2.metadata.MetadataOutput
 import com.google.android.exoplayer2.metadata.icy.IcyInfo
 import com.google.android.exoplayer2.source.MediaSourceEventListener
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
@@ -18,23 +19,31 @@ import com.google.android.exoplayer2.source.TrackGroupArray
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray
 import com.google.android.exoplayer2.util.Util.getUserAgent
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory
+import com.google.android.exoplayer2.util.MimeTypes
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaMetadata
+import com.google.android.gms.cast.MediaQueueItem
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.framework.CastContext
 import kotlinx.android.synthetic.main.activity_main.*
 import java.io.IOException
-import java.lang.Exception
 
 class MainActivity : AppCompatActivity() {
 
+    private var castPlayer: CastPlayer? = null
     private var exoPlayer: ExoPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        button.isSelected = true
+        button.isEnabled = true
     }
 
     override fun onStart() {
         super.onStart()
 
-        val dataSourceFactory = DefaultHttpDataSourceFactory(getUserAgent(this, "purefm"))
+        val dataSourceFactory = DefaultHttpDataSourceFactory(getUserAgent(this, "pure-fm.de (Android)"))
 
         val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
             .createMediaSource(Uri.parse("http://radionetz.de:8000/purefm-bln.mp3"))
@@ -45,45 +54,43 @@ class MainActivity : AppCompatActivity() {
 
         simpleExoPlayer.addAnalyticsListener(object: AnalyticsListener {
             override fun onSeekProcessed(eventTime: AnalyticsListener.EventTime?) {
-
+                Log.w("SimpleExoPlayer", "onSeekProcessed")
             }
 
             override fun onPlaybackParametersChanged(
                 eventTime: AnalyticsListener.EventTime?,
                 playbackParameters: PlaybackParameters?
             ) {
-
+                Log.w("SimpleExoPlayer", "onPlaybackParametersChanged $playbackParameters")
             }
 
-            override fun onPlayerError(eventTime: AnalyticsListener.EventTime?, error: ExoPlaybackException?) {
-
+            override fun onPlayerError(eventTime: AnalyticsListener.EventTime?,
+                                       error: ExoPlaybackException?) {
+                Log.w("SimpleExoPlayer", "onPlayerError $error")
             }
 
             override fun onSeekStarted(eventTime: AnalyticsListener.EventTime?) {
-
+                Log.w("SimpleExoPlayer", "onSeekStarted")
             }
 
-            override fun onLoadingChanged(eventTime: AnalyticsListener.EventTime?, isLoading: Boolean) {
-
+            override fun onLoadingChanged(eventTime: AnalyticsListener.EventTime?,
+                                          isLoading: Boolean) {
+                Log.w("SimpleExoPlayer", "onLoadingChanged: isLoading=$isLoading")
             }
 
             override fun onDownstreamFormatChanged(
                 eventTime: AnalyticsListener.EventTime?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-
+                Log.d("SimpleExoPlayer", "onDownstreamFormatChanged $mediaLoadData")
             }
 
             override fun onMediaPeriodCreated(eventTime: AnalyticsListener.EventTime?) {
-
-            }
-
-            override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime?, surface: Surface?) {
-
+                Log.d("SimpleExoPlayer", "onMediaPeriodCreated")
             }
 
             override fun onReadingStarted(eventTime: AnalyticsListener.EventTime?) {
-
+                Log.d("SimpleExoPlayer", "onReadingStarted")
             }
 
             override fun onBandwidthEstimate(
@@ -92,7 +99,7 @@ class MainActivity : AppCompatActivity() {
                 totalBytesLoaded: Long,
                 bitrateEstimate: Long
             ) {
-
+                Log.d("SimpleExoPlayer", "onBandwidthEstimate $bitrateEstimate")
             }
 
             override fun onPlayerStateChanged(
@@ -100,19 +107,24 @@ class MainActivity : AppCompatActivity() {
                 playWhenReady: Boolean,
                 playbackState: Int
             ) {
-
+                when(playbackState) {
+                    Player.STATE_IDLE -> Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_IDLE")
+                    Player.STATE_BUFFERING -> Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_BUFFERING")
+                    Player.STATE_READY -> Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_READY")
+                    Player.STATE_ENDED -> Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_ENDED")
+                }
             }
 
             override fun onAudioAttributesChanged(
                 eventTime: AnalyticsListener.EventTime?,
                 audioAttributes: AudioAttributes?
             ) {
-                Log.d("foo", "onAudioAttributesChanged $audioAttributes")
+                Log.d("SimpleExoPlayer", "onAudioAttributesChanged $audioAttributes")
             }
 
             override fun onVolumeChanged(eventTime: AnalyticsListener.EventTime?,
                                          volume: Float) {
-                Log.d("foo", "onVolumeChanged $volume")
+                Log.d("SimpleExoPlayer", "onVolumeChanged $volume")
             }
 
 
@@ -121,12 +133,12 @@ class MainActivity : AppCompatActivity() {
                 trackType: Int,
                 format: Format?
             ) {
-                Log.d("foo", "onDecoderInputFormatChanged $format")
+                Log.d("SimpleExoPlayer", "onDecoderInputFormatChanged $format")
             }
 
             override fun onAudioSessionId(eventTime: AnalyticsListener.EventTime?,
                                           audioSessionId: Int) {
-                Log.d("foo", "onAudioSessionId $audioSessionId")
+                Log.d("SimpleExoPlayer", "onAudioSessionId $audioSessionId")
             }
 
             override fun onLoadStarted(
@@ -134,7 +146,7 @@ class MainActivity : AppCompatActivity() {
                 loadEventInfo: MediaSourceEventListener.LoadEventInfo?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("foo", "onLoadStarted $mediaLoadData")
+                Log.d("SimpleExoPlayer", "onLoadStarted $loadEventInfo")
             }
 
             override fun onTracksChanged(
@@ -142,19 +154,19 @@ class MainActivity : AppCompatActivity() {
                 trackGroups: TrackGroupArray?,
                 trackSelections: TrackSelectionArray?
             ) {
-                Log.d("foo", "onTracksChanged $trackSelections")
+                Log.d("SimpleExoPlayer", "onTracksChanged $trackSelections")
             }
 
             override fun onPositionDiscontinuity(eventTime: AnalyticsListener.EventTime?,
                                                  reason: Int) {
-                Log.d("foo", "onPositionDiscontinuity $reason")
+                Log.d("SimpleExoPlayer", "onPositionDiscontinuity $reason")
             }
 
             override fun onUpstreamDiscarded(
                 eventTime: AnalyticsListener.EventTime?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("foo", "onUpstreamDiscarded $mediaLoadData")
+                Log.d("SimpleExoPlayer", "onUpstreamDiscarded $mediaLoadData")
             }
 
             override fun onLoadCanceled(
@@ -162,16 +174,16 @@ class MainActivity : AppCompatActivity() {
                 loadEventInfo: MediaSourceEventListener.LoadEventInfo?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("foo", "onLoadCanceled $mediaLoadData")
+                Log.d("SimpleExoPlayer", "onLoadCanceled $mediaLoadData")
             }
 
             override fun onMediaPeriodReleased(eventTime: AnalyticsListener.EventTime?) {
-                Log.d("foo", "onMediaPeriodReleased")
+                Log.d("SimpleExoPlayer", "onMediaPeriodReleased")
             }
 
             override fun onTimelineChanged(eventTime: AnalyticsListener.EventTime?,
                                            reason: Int) {
-                Log.d("foo", "onTimelineChanged $reason")
+                Log.d("SimpleExoPlayer", "onTimelineChanged $reason")
             }
 
             override fun onDecoderInitialized(
@@ -180,25 +192,7 @@ class MainActivity : AppCompatActivity() {
                 decoderName: String?,
                 initializationDurationMs: Long
             ) {
-                Log.d("foo", "onDecoderInitialized $decoderName")
-            }
-
-            override fun onDecoderEnabled(
-                eventTime: AnalyticsListener.EventTime?,
-                trackType: Int,
-                decoderCounters: DecoderCounters?
-            ) {
-
-            }
-
-            override fun onVideoSizeChanged(
-                eventTime: AnalyticsListener.EventTime?,
-                width: Int,
-                height: Int,
-                unappliedRotationDegrees: Int,
-                pixelWidthHeightRatio: Float
-            ) {
-
+                Log.d("SimpleExoPlayer", "onDecoderInitialized $decoderName")
             }
 
             override fun onAudioUnderrun(
@@ -207,7 +201,7 @@ class MainActivity : AppCompatActivity() {
                 bufferSizeMs: Long,
                 elapsedSinceLastFeedMs: Long
             ) {
-
+                Log.w("SimpleExoPlayer", "onAudioUnderrun $bufferSizeMs")
             }
 
             override fun onLoadCompleted(
@@ -215,11 +209,7 @@ class MainActivity : AppCompatActivity() {
                 loadEventInfo: MediaSourceEventListener.LoadEventInfo?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-
-            }
-
-            override fun onDrmKeysRemoved(eventTime: AnalyticsListener.EventTime?) {
-
+                Log.d("SimpleExoPlayer", "onLoadCompleted $mediaLoadData")
             }
 
             override fun onLoadError(
@@ -229,31 +219,120 @@ class MainActivity : AppCompatActivity() {
                 error: IOException?,
                 wasCanceled: Boolean
             ) {
-
+                Log.e("SimpleExoPlayer", "onLoadError $error")
             }
 
             override fun onMetadata(eventTime: AnalyticsListener.EventTime?,
                                     metadata: Metadata?) {
                 val entry: IcyInfo = metadata?.get(0) as IcyInfo
-                track_title_text_view.text = getString(R.string.now_on_air, entry.title)
+                val title = entry.title
+                Log.d("SimpleExoPlayer", "onMetadata title=$title")
+                track_title_text_view.text = getString(R.string.now_on_air, title)
+
             }
         })
 
-        player_view.player = simpleExoPlayer
         exoPlayer = simpleExoPlayer
-        player_view.showController()
-        player_view.useArtwork = true
+
+        val url  = "http://radionetz.de:8000/purefm-bln.mp3"
+        val movieMetadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MUSIC_TRACK)
+        movieMetadata.putString(MediaMetadata.KEY_TITLE, "pure-fm.de")
+
+        val mediaInfo: MediaInfo  = MediaInfo.Builder(url)
+            .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+            .setContentType(MimeTypes.AUDIO_MPEG)
+            .setMetadata(movieMetadata).build()
+
+        val mediaQueueItem = MediaQueueItem.Builder(mediaInfo).build()
+        val castContext = CastContext.getSharedInstance(this)
+        val player = CastPlayer(castContext)
+        player.playWhenReady = false
+        castPlayer = player
+
+        player.addListener(object: Player.EventListener {
+            override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters?) {
+                Log.d("CastPlayer", "onPlaybackParametersChanged $playbackParameters")
+            }
+
+            override fun onSeekProcessed() {
+                Log.d("CastPlayer", "onSeekProcessed")
+            }
+
+            override fun onTracksChanged(trackGroups: TrackGroupArray?,
+                                         trackSelections: TrackSelectionArray?) {
+                Log.d("CastPlayer", "onTracksChanged $trackSelections")
+            }
+
+            override fun onPlayerError(error: ExoPlaybackException?) {
+                Log.d("CastPlayer", "onPlayerError $error")
+            }
+
+            override fun onLoadingChanged(isLoading: Boolean) {
+                Log.d("CastPlayer", "onLoadingChanged $isLoading")
+            }
+
+            override fun onPositionDiscontinuity(reason: Int) {
+                Log.d("CastPlayer", "onPositionDiscontinuity $reason")
+            }
+
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                Log.d("CastPlayer", "onRepeatModeChanged $repeatMode")
+            }
+
+            override fun onTimelineChanged(timeline: Timeline?,
+                                           manifest: Any?,
+                                           reason: Int) {
+                when(reason) {
+                    Player.TIMELINE_CHANGE_REASON_PREPARED -> Log.d("CastPlayer", "onTimelineChanged TIMELINE_CHANGE_REASON_PREPARED")
+                    Player.TIMELINE_CHANGE_REASON_RESET -> Log.d("CastPlayer", "onTimelineChanged TIMELINE_CHANGE_REASON_RESET")
+                    Player.TIMELINE_CHANGE_REASON_DYNAMIC -> Log.d("CastPlayer", "onTimelineChanged TIMELINE_CHANGE_REASON_DYNAMIC")
+                }
+            }
+
+            override fun onPlayerStateChanged(playWhenReady: Boolean,
+                                              playbackState: Int) {
+                when(playbackState) {
+                    Player.STATE_IDLE -> Log.d("CastPlayer", "onPlayerStateChanged STATE_IDLE")
+                    Player.STATE_BUFFERING -> Log.d("CastPlayer", "onPlayerStateChanged STATE_BUFFERING")
+                    Player.STATE_READY -> Log.d("CastPlayer", "onPlayerStateChanged STATE_READY")
+                    Player.STATE_ENDED -> Log.d("CastPlayer", "onPlayerStateChanged STATE_ENDED")
+                }
+            }
+        })
+
+        player.setSessionAvailabilityListener(object: SessionAvailabilityListener {
+            override fun onCastSessionAvailable() {
+                Log.d("CastPlayer", "onCastSessionAvailable")
+                player.loadItem(mediaQueueItem, TIME_UNSET)
+            }
+
+            override fun onCastSessionUnavailable() {
+                Log.d("CastPlayer", "onCastSessionUnavailable")
+                castPlayer = null
+
+            }
+        })
+
+
     }
 
     override fun onStop() {
-        player_view.player = null
         exoPlayer?.stop(true)
         exoPlayer?.release()
+        castPlayer?.stop(true)
+        castPlayer?.release()
         super.onStop()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        super.onCreateOptionsMenu(menu)
+        menuInflater.inflate(R.menu.menu, menu)
+        CastButtonFactory.setUpMediaRouteButton(applicationContext, menu, R.id.media_route_menu_item)
+        return true
     }
 
     // <img alt="play" src="play1.png" onclick="soundManager.play('purestream')" align="middle" height="20" width="20">
@@ -262,33 +341,4 @@ class MainActivity : AppCompatActivity() {
     // stream contains mp3 metadata.  Title Genre (comma separated), Now Playing
     //
     // Stereo / 44.1 / 32 bits per sample, bitrate 128 kb/s
-
-    // <body style="margin: 0; background-color: #2B2728; background-image: url('http://www.pure-fm.de/player/images/hg-berlin-1.jpg');">
-    //
-    //<table align="center" style="width: 750px; height: 250px;" cellpadding="0" cellspacing="0">
-    //	<tbody><tr>
-    //		<td class="auto-style1" style="width: 750px; height: 250px">
-    //		<table align="center" cellspacing="0" cellpadding="0">
-    //			<tbody><tr>
-    //				<td style="width: 495px; height: 200px">&nbsp;</td>
-    //				<td rowspan="3" style="height: 250px; width: 250px;" class="auto-style4" onclick="load('')">
-    //	<img src="http://www.pure-fm.de/wp-content/uploads/0034377.jpg" border="0" title="" height="250" width="250"></td>
-    //			</tr>
-    //			<tr>
-    //				<td class="auto-style2" style="height: 25px; width: 500px;" onclick="load('')">
-    //				<span class="auto-style5"><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">&nbsp;&nbsp;NOW ON AIR</font></font></strong></span><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> &nbsp; &nbsp;Sarard</font></font></strong></td>
-    //			</tr>
-    //			<tr>
-    //				<td class="auto-style3" style="height: 25px; width: 500px;" onclick="load('')">
-    //				<strong><em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kummerbube&nbsp;</font></font></em>&nbsp;&nbsp; </strong></td>
-    //			</tr>
-    //		</tbody></table>
-    //		</td>
-    //	</tr>
-    //</tbody></table><div id="goog-gt-tt" class="skiptranslate" dir="ltr"><div style="padding: 8px;"><div><div class="logo"><img src="https://www.gstatic.com/images/branding/product/1x/translate_24dp.png" width="20" height="20" alt="Google Translate"></div></div></div><div class="top" style="padding: 8px; float: left; width: 100%;"><h1 class="title gray">Original text</h1></div><div class="middle" style="padding: 8px;"><div class="original-text"></div></div><div class="bottom" style="padding: 8px;"><div class="activity-links"><span class="activity-link">Contribute a better translation</span><span class="activity-link"></span></div><div class="started-activity-container"><hr style="color: #CCC; background-color: #CCC; height: 1px; border: none;"><div class="activity-root"></div></div></div><div class="status-message" style="display: none;"></div></div>
-    //
-    //
-    //
-    //
-    //<div class="goog-te-spinner-pos"><div class="goog-te-spinner-animation"><svg xmlns="http://www.w3.org/2000/svg" class="goog-te-spinner" width="96px" height="96px" viewBox="0 0 66 66"><circle class="goog-te-spinner-path" fill="none" stroke-width="6" stroke-linecap="round" cx="33" cy="33" r="30"></circle></svg></div></div></body>
 }
