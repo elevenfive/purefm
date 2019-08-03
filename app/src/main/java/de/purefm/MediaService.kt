@@ -31,21 +31,47 @@ import java.io.IOException
 import java.io.PrintWriter
 
 class MediaService(private val castContext: CastContext = CastContext.getSharedInstance(MainApplication.instance)): Service() {
-    enum class Command(val ordinalInt: Int) {
-        PLAY_LOCAL(0), PLAY_CAST(1), STOP(2), SEND_STATUS(3)
+    enum class Status(val ordinalInt: Int) {
+        STOPPED(0), STARTING(1), PLAYING(2);
     }
 
-    enum class Status(val ordinalInt: Int) {
-        STOPPED(0), STARTING(1), PLAYING(2)
+    enum class Command(val ordinalInt: Int) {
+        PLAY(0), STOP(2);
+
+        companion object {
+            fun fromOrdinalInt(ordinalInt: Int): Command = when (ordinalInt) {
+                PLAY.ordinalInt -> PLAY
+                STOP.ordinalInt -> STOP
+                else -> throw IllegalArgumentException()
+            }
+        }
+    }
+
+    enum class Source(val ordinalInt: Int) {
+        LOCAL(0), CAST(1);
+
+        companion object {
+            fun fromOrdinalInt(ordinalInt: Int): Source = when (ordinalInt) {
+                LOCAL.ordinalInt -> LOCAL
+                CAST.ordinalInt -> CAST
+                else -> throw IllegalArgumentException()
+            }
+        }
     }
 
     private var castPlayer: CastPlayer? = null
 
     private var exoPlayer: ExoPlayer? = null
 
-    private var lastCommand: Command = Command.STOP
+    private var lastCommand: MutableMap<Source, Command> = mutableMapOf(
+        Pair(Source.LOCAL, Command.STOP),
+        Pair(Source.CAST, Command.STOP))
 
-    private var lastStatus: Status = Status.STOPPED
+    private var lastStatus: MutableMap<Source, Status> = mutableMapOf(
+        Pair(Source.LOCAL, Status.STOPPED),
+        Pair(Source.CAST, Status.STOPPED))
+
+    private var lastSource: Source = Source.LOCAL
 
     override fun onCreate() {
         super.onCreate()
@@ -65,71 +91,51 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     override fun onStartCommand(intent: Intent?,
                                 flags: Int,
                                 startId: Int): Int {
-        when (intent?.getIntExtra("command", -1)) {
-            Command.SEND_STATUS.ordinalInt -> {
-                sendBroadcast(lastStatus)
-                return super.onStartCommand(intent, flags, startId)
-            }
+        val commandOrdinalInt = intent?.getIntExtra("command", -1) ?: super.onStartCommand(intent, flags, startId)
+        val sourceOrdinalInt = intent?.getIntExtra("source", -1) ?: super.onStartCommand(intent, flags, startId)
+        val command = Command.fromOrdinalInt(commandOrdinalInt)
+        val source = Source.fromOrdinalInt(sourceOrdinalInt)
 
-            lastCommand.ordinalInt -> {
-                return super.onStartCommand(intent, flags, startId)
-            }
-
-            Command.PLAY_LOCAL.ordinalInt -> {
-                when (lastCommand) {
-                    Command.STOP -> {
-                        playLocally()
-                    }
-
-                    Command.PLAY_CAST -> {
-                        stopCastally()
-                        playLocally()
-                    }
-
-                    else -> { }
+        if (lastCommand[source] != command) {
+            when (command) {
+                Command.PLAY -> {
+                    stop(lastSource)
+                    play(source)
                 }
 
-                lastCommand = Command.PLAY_LOCAL
-            }
-
-            Command.PLAY_CAST.ordinalInt -> {
-                when (lastCommand) {
-                    Command.STOP -> {
-                        playCastally()
-                    }
-
-                    Command.PLAY_LOCAL -> {
-                        stopLocally()
-                        playCastally()
-                    }
-
-                    else -> { }
+                Command.STOP -> {
+                    stop(lastSource)
+                    play(source)
                 }
-            }
-
-            Command.STOP.ordinalInt -> {
-                when (lastCommand) {
-                    Command.PLAY_LOCAL -> {
-                        stopLocally()
-                    }
-
-                    Command.PLAY_CAST -> {
-                        stopCastally()
-                    }
-
-                    else -> { }
-                }
-            }
-
-            null -> {
-                return super.onStartCommand(intent, flags, startId)
             }
         }
 
+        sendBroadcast()
         return super.onStartCommand(intent, flags, startId)
     }
 
+    private fun play(source: Source) {
+        when (source) {
+            Source.CAST -> playCastally()
+            Source.LOCAL -> playLocally()
+        }
+    }
+
+    private fun stop(source: Source) {
+        when (source) {
+            Source.CAST -> stopCastally()
+            Source.LOCAL -> stopLocally()
+        }
+    }
+
     private fun playCastally() {
+        if (lastStatus[Source.CAST] != Status.STOPPED) {
+            return
+        }
+
+        lastSource = Source.CAST
+        lastStatus[Source.CAST] = Status.STARTING
+
         castPlayer?.apply {
             if (isCastSessionAvailable) {
                 loadItem()
@@ -140,14 +146,26 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     }
 
     private fun stopCastally() {
+        if (lastStatus[Source.CAST] == Status.STOPPED) {
+            return
+        }
+
+        lastStatus[Source.CAST] = Status.STOPPED
+
         castPlayer?.apply {
             setSessionAvailabilityListener(null)
             stop(true)
-            lastStatus = Status.STOPPED
         }
     }
 
     private fun playLocally() {
+        if (lastStatus[Source.LOCAL] != Status.STOPPED) {
+            return
+        }
+
+        lastSource = Source.LOCAL
+        lastStatus[Source.LOCAL] = Status.STARTING
+
         exoPlayer?.apply {
             playWhenReady = true
             prepare(progressiveMediaSource())
@@ -155,6 +173,12 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     }
 
     private fun stopLocally() {
+        if (lastStatus[Source.LOCAL] == Status.STOPPED) {
+            return
+        }
+
+        lastStatus[Source.LOCAL] = Status.STOPPED
+
         exoPlayer?.stop(true)
     }
 
@@ -297,31 +321,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 playWhenReady: Boolean,
                 playbackState: Int
             ) {
-                when (playbackState) {
-                    Player.STATE_IDLE -> {
-                        lastStatus = Status.STOPPED
-                        sendBroadcast(Status.STOPPED)
-                        Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_IDLE")
-                    }
-
-                    Player.STATE_BUFFERING -> {
-                        Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_BUFFERING")
-                        lastStatus = Status.STARTING
-                        sendBroadcast(Status.STARTING)
-                    }
-
-                    Player.STATE_READY -> {
-                        Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_READY")
-                        lastStatus = Status.PLAYING
-                        sendBroadcast(Status.PLAYING)
-                    }
-
-                    Player.STATE_ENDED -> {
-                        lastStatus = Status.STOPPED
-                        sendBroadcast(Status.STOPPED)
-                        Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_ENDED")
-                    }
-                }
+                handleStateChange(Source.LOCAL, playbackState)
             }
 
             override fun onAudioAttributesChanged(
@@ -463,9 +463,38 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
         }
     }
 
-    private fun sendBroadcast(status: Status) {
+    private fun handleStateChange(source: Source,
+                                  playbackState: Int) {
+        when (playbackState) {
+
+
+            Player.STATE_IDLE -> {
+                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_IDLE")
+            }
+
+            Player.STATE_BUFFERING -> {
+                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_BUFFERING")
+            }
+
+            Player.STATE_READY -> {
+                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_READY")
+                lastStatus[Source.LOCAL] = Status.PLAYING
+                sendBroadcast()
+            }
+
+            Player.STATE_ENDED -> {
+                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_ENDED")
+            }
+
+            else -> return
+        }
+    }
+
+    private fun sendBroadcast() {
         val broadcast = Intent()
-        broadcast.putExtra("status", status)
+        broadcast.putExtra("status", lastStatus[lastSource]?.ordinalInt)
+        broadcast.putExtra("source", lastSource.ordinalInt)
+        broadcast.putExtra("command", lastCommand[lastSource]?.ordinalInt)
         sendBroadcast(broadcast)
     }
 
@@ -534,12 +563,13 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
 
                     Player.STATE_BUFFERING -> {
                         Log.d("CastPlayer", "onPlayerStateChanged STATE_BUFFERING")
-                        sendBroadcast(STARTING)
+                        sendBroadcast()
                     }
 
                     Player.STATE_READY -> {
                         Log.d("CastPlayer", "onPlayerStateChanged STATE_READY")
-                        sendBroadcast(PLAYING)
+                        lastStatus[Source.CAST] = Status.PLAYING
+                        sendBroadcast()
                     }
 
                     Player.STATE_ENDED -> Log.d("CastPlayer", "onPlayerStateChanged STATE_ENDED")
