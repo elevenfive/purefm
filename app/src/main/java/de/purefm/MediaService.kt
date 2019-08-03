@@ -1,11 +1,13 @@
 package de.purefm
 
-import android.app.Service
+import android.app.*
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.exoplayer2.*
 import com.google.android.exoplayer2.analytics.AnalyticsListener
 import com.google.android.exoplayer2.audio.AudioAttributes
@@ -30,30 +32,28 @@ import java.io.FileDescriptor
 import java.io.IOException
 import java.io.PrintWriter
 
+const val CAST_TAG =  "purefm_cast"
+const val LOCAL_TAG = "purefm_local"
+const val SERVICE_STATUS_ACTION = "de.purefm.SERVICE_STATUS"
+const val CHANNEL_ID = "106.4"
+
 class MediaService(private val castContext: CastContext = CastContext.getSharedInstance(MainApplication.instance)): Service() {
     enum class Status(val ordinalInt: Int) {
         STOPPED(0), STARTING(1), PLAYING(2);
     }
 
+    enum class Source(val ordinalInt: Int) {
+        LOCAL(0), CAST(1);
+    }
+
     enum class Command(val ordinalInt: Int) {
-        PLAY(0), STOP(2);
+        INIT(0), PLAY(1), STOP(2);
 
         companion object {
             fun fromOrdinalInt(ordinalInt: Int): Command = when (ordinalInt) {
                 PLAY.ordinalInt -> PLAY
                 STOP.ordinalInt -> STOP
-                else -> throw IllegalArgumentException()
-            }
-        }
-    }
-
-    enum class Source(val ordinalInt: Int) {
-        LOCAL(0), CAST(1);
-
-        companion object {
-            fun fromOrdinalInt(ordinalInt: Int): Source = when (ordinalInt) {
-                LOCAL.ordinalInt -> LOCAL
-                CAST.ordinalInt -> CAST
+                INIT.ordinalInt -> INIT
                 else -> throw IllegalArgumentException()
             }
         }
@@ -91,27 +91,54 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     override fun onStartCommand(intent: Intent?,
                                 flags: Int,
                                 startId: Int): Int {
-        val commandOrdinalInt = intent?.getIntExtra("command", -1) ?: super.onStartCommand(intent, flags, startId)
-        val sourceOrdinalInt = intent?.getIntExtra("source", -1) ?: super.onStartCommand(intent, flags, startId)
+        val commandOrdinalInt = intent?.getIntExtra("command", Command.INIT.ordinalInt) ?: Command.INIT.ordinalInt
         val command = Command.fromOrdinalInt(commandOrdinalInt)
-        val source = Source.fromOrdinalInt(sourceOrdinalInt)
 
-        if (lastCommand[source] != command) {
+        if (lastCommand[lastSource] != command) {
             when (command) {
+                Command.INIT -> { }
+
                 Command.PLAY -> {
-                    stop(lastSource)
-                    play(source)
+                    play(lastSource)
+                    startForeground()
                 }
 
                 Command.STOP -> {
                     stop(lastSource)
-                    play(source)
+                    stopForeground(true)
                 }
             }
         }
 
         sendBroadcast()
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun startForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "channel"
+            val descriptionText = "description"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val mChannel = NotificationChannel(CHANNEL_ID, name, importance)
+            mChannel.description = descriptionText
+            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(mChannel)
+        }
+
+        val pendingIntent: PendingIntent =
+            Intent(this, MainActivity::class.java).let { intent ->
+                PendingIntent.getActivity(this, 0, intent, 0)
+            }
+
+        val notification: Notification = Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("foo")
+            .setContentText("foo")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setTicker("foo")
+            .build()
+
+        startForeground(1, notification)
     }
 
     private fun play(source: Source) {
@@ -135,6 +162,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
 
         lastSource = Source.CAST
         lastStatus[Source.CAST] = Status.STARTING
+        lastCommand[Source.CAST] = Command.PLAY
 
         castPlayer?.apply {
             if (isCastSessionAvailable) {
@@ -151,6 +179,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
         }
 
         lastStatus[Source.CAST] = Status.STOPPED
+        lastCommand[Source.CAST] = Command.STOP
 
         castPlayer?.apply {
             setSessionAvailabilityListener(null)
@@ -165,6 +194,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
 
         lastSource = Source.LOCAL
         lastStatus[Source.LOCAL] = Status.STARTING
+        lastCommand[Source.LOCAL] = Command.PLAY
 
         exoPlayer?.apply {
             playWhenReady = true
@@ -178,6 +208,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
         }
 
         lastStatus[Source.LOCAL] = Status.STOPPED
+        lastCommand[Source.LOCAL] = Command.STOP
 
         exoPlayer?.stop(true)
     }
@@ -229,12 +260,12 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     private val sessionAvailabilityListener: SessionAvailabilityListener by lazy {
         object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
-                Log.d("CastPlayer", "onCastSessionAvailable")
+                Log.d(CAST_TAG, "onCastSessionAvailable")
                 loadItem()
             }
 
             override fun onCastSessionUnavailable() {
-                Log.d("CastPlayer", "onCastSessionUnavailable")
+                Log.d(CAST_TAG, "onCastSessionUnavailable")
                 castPlayer = null
             }
         }
@@ -264,47 +295,47 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     private val analyticsListener: AnalyticsListener by lazy {
         object : AnalyticsListener {
             override fun onSeekProcessed(eventTime: AnalyticsListener.EventTime?) {
-                Log.w("SimpleExoPlayer", "onSeekProcessed")
+                Log.w(LOCAL_TAG, "onSeekProcessed")
             }
 
             override fun onPlaybackParametersChanged(
                 eventTime: AnalyticsListener.EventTime?,
                 playbackParameters: PlaybackParameters?
             ) {
-                Log.w("SimpleExoPlayer", "onPlaybackParametersChanged $playbackParameters")
+                Log.w(LOCAL_TAG, "onPlaybackParametersChanged $playbackParameters")
             }
 
             override fun onPlayerError(
                 eventTime: AnalyticsListener.EventTime?,
                 error: ExoPlaybackException?
             ) {
-                Log.w("SimpleExoPlayer", "onPlayerError $error")
+                Log.w(LOCAL_TAG, "onPlayerError $error")
             }
 
             override fun onSeekStarted(eventTime: AnalyticsListener.EventTime?) {
-                Log.w("SimpleExoPlayer", "onSeekStarted")
+                Log.w(LOCAL_TAG, "onSeekStarted")
             }
 
             override fun onLoadingChanged(
                 eventTime: AnalyticsListener.EventTime?,
                 isLoading: Boolean
             ) {
-                Log.w("SimpleExoPlayer", "onLoadingChanged: isLoading=$isLoading")
+                Log.w(LOCAL_TAG, "onLoadingChanged: isLoading=$isLoading")
             }
 
             override fun onDownstreamFormatChanged(
                 eventTime: AnalyticsListener.EventTime?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("SimpleExoPlayer", "onDownstreamFormatChanged $mediaLoadData")
+                Log.d(LOCAL_TAG, "onDownstreamFormatChanged $mediaLoadData")
             }
 
             override fun onMediaPeriodCreated(eventTime: AnalyticsListener.EventTime?) {
-                Log.d("SimpleExoPlayer", "onMediaPeriodCreated")
+                Log.d(LOCAL_TAG, "onMediaPeriodCreated")
             }
 
             override fun onReadingStarted(eventTime: AnalyticsListener.EventTime?) {
-                Log.d("SimpleExoPlayer", "onReadingStarted")
+                Log.d(LOCAL_TAG, "onReadingStarted")
             }
 
             override fun onBandwidthEstimate(
@@ -313,7 +344,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 totalBytesLoaded: Long,
                 bitrateEstimate: Long
             ) {
-                Log.d("SimpleExoPlayer", "onBandwidthEstimate $bitrateEstimate")
+                Log.d(LOCAL_TAG, "onBandwidthEstimate $bitrateEstimate")
             }
 
             override fun onPlayerStateChanged(
@@ -328,14 +359,14 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 eventTime: AnalyticsListener.EventTime?,
                 audioAttributes: AudioAttributes?
             ) {
-                Log.d("SimpleExoPlayer", "onAudioAttributesChanged $audioAttributes")
+                Log.d(LOCAL_TAG, "onAudioAttributesChanged $audioAttributes")
             }
 
             override fun onVolumeChanged(
                 eventTime: AnalyticsListener.EventTime?,
                 volume: Float
             ) {
-                Log.d("SimpleExoPlayer", "onVolumeChanged $volume")
+                Log.d(LOCAL_TAG, "onVolumeChanged $volume")
             }
 
             override fun onDecoderInputFormatChanged(
@@ -343,14 +374,14 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 trackType: Int,
                 format: Format?
             ) {
-                Log.d("SimpleExoPlayer", "onDecoderInputFormatChanged $format")
+                Log.d(LOCAL_TAG, "onDecoderInputFormatChanged $format")
             }
 
             override fun onAudioSessionId(
                 eventTime: AnalyticsListener.EventTime?,
                 audioSessionId: Int
             ) {
-                Log.d("SimpleExoPlayer", "onAudioSessionId $audioSessionId")
+                Log.d(LOCAL_TAG, "onAudioSessionId $audioSessionId")
             }
 
             override fun onLoadStarted(
@@ -358,7 +389,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 loadEventInfo: MediaSourceEventListener.LoadEventInfo?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("SimpleExoPlayer", "onLoadStarted $loadEventInfo")
+                Log.d(LOCAL_TAG, "onLoadStarted $loadEventInfo")
             }
 
             override fun onTracksChanged(
@@ -366,21 +397,21 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 trackGroups: TrackGroupArray?,
                 trackSelections: TrackSelectionArray?
             ) {
-                Log.d("SimpleExoPlayer", "onTracksChanged $trackSelections")
+                Log.d(LOCAL_TAG, "onTracksChanged $trackSelections")
             }
 
             override fun onPositionDiscontinuity(
                 eventTime: AnalyticsListener.EventTime?,
                 reason: Int
             ) {
-                Log.d("SimpleExoPlayer", "onPositionDiscontinuity $reason")
+                Log.d(LOCAL_TAG, "onPositionDiscontinuity $reason")
             }
 
             override fun onUpstreamDiscarded(
                 eventTime: AnalyticsListener.EventTime?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("SimpleExoPlayer", "onUpstreamDiscarded $mediaLoadData")
+                Log.d(LOCAL_TAG, "onUpstreamDiscarded $mediaLoadData")
             }
 
             override fun onLoadCanceled(
@@ -388,11 +419,11 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 loadEventInfo: MediaSourceEventListener.LoadEventInfo?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("SimpleExoPlayer", "onLoadCanceled $mediaLoadData")
+                Log.d(LOCAL_TAG, "onLoadCanceled $mediaLoadData")
             }
 
             override fun onMediaPeriodReleased(eventTime: AnalyticsListener.EventTime?) {
-                Log.d("SimpleExoPlayer", "onMediaPeriodReleased")
+                Log.d(LOCAL_TAG, "onMediaPeriodReleased")
             }
 
             override fun onTimelineChanged(
@@ -401,17 +432,17 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
             ) {
                 when (reason) {
                     Player.TIMELINE_CHANGE_REASON_PREPARED -> Log.d(
-                        "SimpleExoPlayer",
+                        LOCAL_TAG,
                         "onTimelineChanged TIMELINE_CHANGE_REASON_PREPARED"
                     )
 
                     Player.TIMELINE_CHANGE_REASON_RESET -> Log.d(
-                        "SimpleExoPlayer",
+                        LOCAL_TAG,
                         "onTimelineChanged TIMELINE_CHANGE_REASON_RESET"
                     )
 
                     Player.TIMELINE_CHANGE_REASON_DYNAMIC -> Log.d(
-                        "SimpleExoPlayer",
+                        LOCAL_TAG,
                         "onTimelineChanged TIMELINE_CHANGE_REASON_DYNAMIC"
                     )
                 }
@@ -423,7 +454,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 decoderName: String?,
                 initializationDurationMs: Long
             ) {
-                Log.d("SimpleExoPlayer", "onDecoderInitialized $decoderName")
+                Log.d(LOCAL_TAG, "onDecoderInitialized $decoderName")
             }
 
             override fun onAudioUnderrun(
@@ -432,7 +463,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 bufferSizeMs: Long,
                 elapsedSinceLastFeedMs: Long
             ) {
-                Log.w("SimpleExoPlayer", "onAudioUnderrun $bufferSizeMs")
+                Log.w(LOCAL_TAG, "onAudioUnderrun $bufferSizeMs")
             }
 
             override fun onLoadCompleted(
@@ -440,7 +471,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 loadEventInfo: MediaSourceEventListener.LoadEventInfo?,
                 mediaLoadData: MediaSourceEventListener.MediaLoadData?
             ) {
-                Log.d("SimpleExoPlayer", "onLoadCompleted $mediaLoadData")
+                Log.d(LOCAL_TAG, "onLoadCompleted $mediaLoadData")
             }
 
             override fun onLoadError(
@@ -450,7 +481,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 error: IOException?,
                 wasCanceled: Boolean
             ) {
-                Log.e("SimpleExoPlayer", "onLoadError $error")
+                Log.e(LOCAL_TAG, "onLoadError $error")
             }
 
             override fun onMetadata(
@@ -458,7 +489,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 metadata: Metadata?
             ) {
                 val entry: IcyInfo = metadata?.get(0) as IcyInfo
-                Log.d("SimpleExoPlayer", "onMetadata title=$entry.title")
+                Log.d(LOCAL_TAG, "onMetadata title=$entry.title")
             }
         }
     }
@@ -469,21 +500,21 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
 
 
             Player.STATE_IDLE -> {
-                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_IDLE")
+                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_IDLE")
             }
 
             Player.STATE_BUFFERING -> {
-                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_BUFFERING")
+                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_BUFFERING")
             }
 
             Player.STATE_READY -> {
-                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_READY")
+                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_READY")
                 lastStatus[Source.LOCAL] = Status.PLAYING
                 sendBroadcast()
             }
 
             Player.STATE_ENDED -> {
-                Log.d("SimpleExoPlayer", "onPlayerStateChanged STATE_ENDED")
+                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_ENDED")
             }
 
             else -> return
@@ -491,44 +522,44 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     }
 
     private fun sendBroadcast() {
-        val broadcast = Intent()
+        val broadcast = Intent(SERVICE_STATUS_ACTION)
         broadcast.putExtra("status", lastStatus[lastSource]?.ordinalInt)
         broadcast.putExtra("source", lastSource.ordinalInt)
         broadcast.putExtra("command", lastCommand[lastSource]?.ordinalInt)
-        sendBroadcast(broadcast)
+        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(broadcast)
     }
 
     private val eventListener: Player.EventListener by lazy {
         object : Player.EventListener {
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters?) {
-                Log.d("CastPlayer", "onPlaybackParametersChanged $playbackParameters")
+                Log.d(CAST_TAG, "onPlaybackParametersChanged $playbackParameters")
             }
 
             override fun onSeekProcessed() {
-                Log.d("CastPlayer", "onSeekProcessed")
+                Log.d(CAST_TAG, "onSeekProcessed")
             }
 
             override fun onTracksChanged(
                 trackGroups: TrackGroupArray?,
                 trackSelections: TrackSelectionArray?
             ) {
-                Log.d("CastPlayer", "onTracksChanged ${trackSelections?.get(0)}")
+                Log.d(CAST_TAG, "onTracksChanged ${trackSelections?.get(0)}")
             }
 
             override fun onPlayerError(error: ExoPlaybackException?) {
-                Log.d("CastPlayer", "onPlayerError $error")
+                Log.d(CAST_TAG, "onPlayerError $error")
             }
 
             override fun onLoadingChanged(isLoading: Boolean) {
-                Log.d("CastPlayer", "onLoadingChanged $isLoading")
+                Log.d(CAST_TAG, "onLoadingChanged $isLoading")
             }
 
             override fun onPositionDiscontinuity(reason: Int) {
-                Log.d("CastPlayer", "onPositionDiscontinuity $reason")
+                Log.d(CAST_TAG, "onPositionDiscontinuity $reason")
             }
 
             override fun onRepeatModeChanged(repeatMode: Int) {
-                Log.d("CastPlayer", "onRepeatModeChanged $repeatMode")
+                Log.d(CAST_TAG, "onRepeatModeChanged $repeatMode")
             }
 
             override fun onTimelineChanged(
@@ -538,17 +569,17 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
             ) {
                 when (reason) {
                     Player.TIMELINE_CHANGE_REASON_PREPARED -> Log.d(
-                        "CastPlayer",
+                        CAST_TAG,
                         "onTimelineChanged TIMELINE_CHANGE_REASON_PREPARED"
                     )
 
                     Player.TIMELINE_CHANGE_REASON_RESET -> Log.d(
-                        "CastPlayer",
+                        CAST_TAG,
                         "onTimelineChanged TIMELINE_CHANGE_REASON_RESET"
                     )
 
                     Player.TIMELINE_CHANGE_REASON_DYNAMIC -> Log.d(
-                        "CastPlayer",
+                        CAST_TAG,
                         "onTimelineChanged TIMELINE_CHANGE_REASON_DYNAMIC"
                     )
                 }
@@ -559,20 +590,20 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 playbackState: Int
             ) {
                 when (playbackState) {
-                    Player.STATE_IDLE -> Log.d("CastPlayer", "onPlayerStateChanged STATE_IDLE")
+                    Player.STATE_IDLE -> Log.d(CAST_TAG, "onPlayerStateChanged STATE_IDLE")
 
                     Player.STATE_BUFFERING -> {
-                        Log.d("CastPlayer", "onPlayerStateChanged STATE_BUFFERING")
+                        Log.d(CAST_TAG, "onPlayerStateChanged STATE_BUFFERING")
                         sendBroadcast()
                     }
 
                     Player.STATE_READY -> {
-                        Log.d("CastPlayer", "onPlayerStateChanged STATE_READY")
+                        Log.d(CAST_TAG, "onPlayerStateChanged STATE_READY")
                         lastStatus[Source.CAST] = Status.PLAYING
                         sendBroadcast()
                     }
 
-                    Player.STATE_ENDED -> Log.d("CastPlayer", "onPlayerStateChanged STATE_ENDED")
+                    Player.STATE_ENDED -> Log.d(CAST_TAG, "onPlayerStateChanged STATE_ENDED")
                 }
             }
         }
@@ -581,10 +612,10 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     private val casteStateListener: CastStateListener by lazy {
         CastStateListener { p0 ->
             when (p0) {
-                CastState.NO_DEVICES_AVAILABLE -> Log.d("CastPlayer", "onCastStateChanged: NO_DEVICES_AVAILABLE")
-                CastState.NOT_CONNECTED -> Log.d("CastPlayer", "onCastStateChanged: NOT_CONNECTED")
-                CastState.CONNECTING -> Log.d("CastPlayer", "onCastStateChanged: CONNECTING")
-                CastState.CONNECTED -> Log.d("CastPlayer", "onCastStateChanged: CONNECTED")
+                CastState.NO_DEVICES_AVAILABLE -> Log.d(CAST_TAG, "onCastStateChanged: NO_DEVICES_AVAILABLE")
+                CastState.NOT_CONNECTED -> Log.d(CAST_TAG, "onCastStateChanged: NOT_CONNECTED")
+                CastState.CONNECTING -> Log.d(CAST_TAG, "onCastStateChanged: CONNECTING")
+                CastState.CONNECTED -> Log.d(CAST_TAG, "onCastStateChanged: CONNECTED")
             }
         }
     }

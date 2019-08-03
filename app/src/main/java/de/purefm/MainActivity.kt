@@ -5,48 +5,46 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import androidx.appcompat.app.AppCompatActivity
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.gms.cast.framework.CastButtonFactory
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
 
+    private var castMenu: Menu? = null
+    private var readyToSetup = false
+    private var setup = false
+
+    private val filter: IntentFilter by lazy { IntentFilter(SERVICE_STATUS_ACTION) }
+
     private val broadcastReceiver: BroadcastReceiver by lazy {
         object: BroadcastReceiver() {
-            override fun onReceive(p0: Context?,
-                                   p1: Intent?) {
-                when (p1?.getIntExtra("status", -1)) {
-                    MediaService.Status.PLAYING.ordinalInt -> button.isSelected = true
-                    MediaService.Status.STOPPED.ordinalInt -> button.isSelected = true
-                }
-            }
+            override fun onReceive(p0: Context?, p1: Intent?) { p1?.let { onReceive(it) } }
         }
-    }
-
-    private val filter: IntentFilter by lazy {
-        IntentFilter("status")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        button.isSelected = savedInstanceState?.getBoolean("playing") ?: false
+        button.isSelected = savedInstanceState?.getSerializable("command") == MediaService.Command.PLAY
 
         button.setOnClickListener {
-            val intent = Intent()
-            intent.setClass(this, MediaService::class.java)
+            val intent = serviceIntent()
 
             if (button.isSelected) {
                 intent.putExtra("command", MediaService.Command.STOP.ordinalInt)
             } else {
-                intent.putExtra("command", MediaService.Command.PLAY_LOCAL.ordinalInt)
+                intent.putExtra("command", MediaService.Command.PLAY.ordinalInt)
             }
 
             startService(intent)
         }
 
-        registerReceiver(broadcastReceiver, filter)
+        LocalBroadcastManager.getInstance(this).registerReceiver(broadcastReceiver, filter)
+        startService(serviceIntent())
     }
 
     override fun onStart() {
@@ -58,14 +56,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        unregisterReceiver(broadcastReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(broadcastReceiver)
         super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         super.onCreateOptionsMenu(menu)
         menuInflater.inflate(R.menu.menu, menu)
-        CastButtonFactory.setUpMediaRouteButton(applicationContext, menu, R.id.media_route_menu_item)
+        castMenu = menu
+
+        if (readyToSetup) {
+            setupMediaRouteButton(menu)
+        }
+
         return true
     }
 
@@ -76,5 +79,31 @@ class MainActivity : AppCompatActivity() {
     //
     // Stereo / 44.1 / 32 bits per sample, bitrate 128 kb/s
 
+    private fun onReceive(p1: Intent) {
+        when (p1.getIntExtra("status", -1)) {
+            MediaService.Status.PLAYING.ordinalInt -> button.isSelected = true
+            MediaService.Status.STOPPED.ordinalInt -> button.isSelected = false
+        }
 
+        if (!setup) {
+            markReadyToSetupMediaRouteButton()
+            castMenu?.let { setupMediaRouteButton(it) }
+        }
+    }
+
+    private fun markReadyToSetupMediaRouteButton() {
+        readyToSetup = true
+    }
+
+    private fun setupMediaRouteButton(menu: Menu) {
+        CastButtonFactory.setUpMediaRouteButton(applicationContext, menu, R.id.media_route_menu_item)
+        Log.d(CAST_TAG, "setUpMediaRouteButton")
+        setup = true
+    }
+
+    private fun serviceIntent(): Intent {
+        val intent = Intent()
+        intent.setClass(this, MediaService::class.java)
+        return intent
+    }
 }
