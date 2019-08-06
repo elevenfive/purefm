@@ -16,8 +16,6 @@ private const val TAG = "MainActivity"
 
 class MainActivity : AppCompatActivity() {
 
-    private var castMenu: Menu? = null
-    private var readyToSetup = false
     private var setup = false
 
     private val filter: IntentFilter by lazy { IntentFilter(SERVICE_STATUS_ACTION) }
@@ -76,11 +74,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreateOptionsMenu(menu)
         Log.d(TAG, "onCreateOptionsMenu $menu")
         menuInflater.inflate(R.menu.menu, menu)
-        castMenu = menu
 
-        if (readyToSetup) {
-            setupMediaRouteButton(menu)
-        }
+        CastButtonFactory.setUpMediaRouteButton(applicationContext, menu, R.id.media_route_menu_item)
+        Log.d(CAST_TAG, "setUpMediaRouteButton")
 
         return true
     }
@@ -104,21 +100,6 @@ class MainActivity : AppCompatActivity() {
                 track_title_text_view.text = null
             }
         }
-
-        if (!setup) {
-            markReadyToSetupMediaRouteButton()
-            castMenu?.let { setupMediaRouteButton(it) }
-        }
-    }
-
-    private fun markReadyToSetupMediaRouteButton() {
-        readyToSetup = true
-    }
-
-    private fun setupMediaRouteButton(menu: Menu) {
-        CastButtonFactory.setUpMediaRouteButton(applicationContext, menu, R.id.media_route_menu_item)
-        Log.d(CAST_TAG, "setUpMediaRouteButton")
-        setup = true
     }
 
     private fun serviceIntent(): Intent {

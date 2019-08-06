@@ -39,9 +39,11 @@ import java.lang.StringBuilder
 
 const val CAST_TAG =  "cast"
 const val LOCAL_TAG = "local"
+const val MEDIA_BUTTON_TAG = "media_button"
+private const val TAG = "MediaService"
+
 const val SERVICE_STATUS_ACTION = "de.purefm.SERVICE_STATUS"
 const val CHANNEL_ID = "106.4"
-private const val TAG = "MediaService"
 
 class MediaService: Service() {
     enum class Status(val ordinalInt: Int) {
@@ -85,6 +87,8 @@ class MediaService: Service() {
 
     private var mediaSession: MediaSessionCompat? = null
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     override fun onCreate() {
         super.onCreate()
 
@@ -102,7 +106,7 @@ class MediaService: Service() {
         player.addListener(eventListener)
         castPlayer = player
 
-        val mediaSessionCompat = MediaSessionCompat(applicationContext, "session tag")
+        val mediaSessionCompat = MediaSessionCompat(applicationContext, "MediaSessionCompat")
         mediaSessionCompat.setCallback(callback)
         mediaSession = mediaSessionCompat
     }
@@ -139,6 +143,239 @@ class MediaService: Service() {
         return super.onStartCommand(intent, flags, startId)
     }
 
+    override fun onBind(intent: Intent?): IBinder? {
+        Log.d(TAG, "onBind $intent ${intent?.extras}")
+        return null
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d(TAG, "onConfigurationChanged $newConfig")
+    }
+
+    override fun onRebind(intent: Intent?) {
+        super.onRebind(intent)
+        Log.d(TAG, "onRebind $intent ${intent?.extras}")
+    }
+
+    override fun dump(fd: FileDescriptor?,
+                      writer: PrintWriter?,
+                      args: Array<out String>?) {
+        super.dump(fd, writer, args)
+
+        Log.d(TAG, "dump $fd $writer $args")
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "onTaskRemoved $rootIntent ${rootIntent?.extras}")
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        Log.d(TAG, "onLowMemory")
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        Log.d(TAG, "onTrimMemory $level")
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        Log.d(TAG, "onUnbind $intent ${intent?.extras}")
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        Log.d(TAG, "onDestroy")
+
+        castPlayer?.let {
+            it.stop()
+            it.release()
+            castPlayer = null
+        }
+
+        exoPlayer?.let {
+            it.stop()
+            it.release()
+            exoPlayer = null
+        }
+
+        mediaSession?.let {
+            it.isActive = false
+            it.release()
+            mediaSession = null
+        }
+
+        super.onDestroy()
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    private val callback: MediaSessionCompat.Callback by lazy {
+        object : MediaSessionCompat.Callback() {
+            override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
+                Log.d(MEDIA_BUTTON_TAG, "onMediaButtonEvent $mediaButtonEvent ${mediaButtonEvent?.extras}")
+                return super.onMediaButtonEvent(mediaButtonEvent)
+            }
+
+            override fun onRewind() {
+                super.onRewind()
+                Log.d(MEDIA_BUTTON_TAG, "onRewind")
+            }
+
+            override fun onSeekTo(pos: Long) {
+                super.onSeekTo(pos)
+                Log.d(MEDIA_BUTTON_TAG, "onSeekTo $pos")
+            }
+
+            override fun onAddQueueItem(description: MediaDescriptionCompat?) {
+                super.onAddQueueItem(description)
+                Log.d(MEDIA_BUTTON_TAG, "onAddQueueItem $description")
+            }
+
+            override fun onAddQueueItem(description: MediaDescriptionCompat?,
+                                        index: Int) {
+                super.onAddQueueItem(description, index)
+                Log.d(MEDIA_BUTTON_TAG, "onAddQueueItem $description $index")
+            }
+
+            override fun onSkipToPrevious() {
+                super.onSkipToPrevious()
+                Log.d(MEDIA_BUTTON_TAG, "onSkipToPrevious")
+            }
+
+            override fun onCustomAction(action: String?,
+                                        extras: Bundle?) {
+                super.onCustomAction(action, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onCustomAction $action $extras")
+            }
+
+            override fun onPrepare() {
+                super.onPrepare()
+                Log.d(MEDIA_BUTTON_TAG, "onPrepare")
+            }
+
+            override fun onFastForward() {
+                super.onFastForward()
+                Log.d(MEDIA_BUTTON_TAG, "onFastForward")
+            }
+
+            override fun onPlay() {
+                super.onPlay()
+                Log.d(MEDIA_BUTTON_TAG, "onPlay")
+            }
+
+            override fun onStop() {
+                super.onStop()
+                Log.d(MEDIA_BUTTON_TAG, "onStop")
+            }
+
+            override fun onSkipToQueueItem(id: Long) {
+                super.onSkipToQueueItem(id)
+                Log.d(MEDIA_BUTTON_TAG, "onSkipToQueueItem $id")
+            }
+
+            override fun onRemoveQueueItem(description: MediaDescriptionCompat?) {
+                super.onRemoveQueueItem(description)
+                Log.d(MEDIA_BUTTON_TAG, "onRemoveQueueItem $description")
+            }
+
+            override fun onSkipToNext() {
+                super.onSkipToNext()
+                Log.d(MEDIA_BUTTON_TAG, "onSkipToNext")
+            }
+
+            override fun onPrepareFromMediaId(mediaId: String?,
+                                              extras: Bundle?) {
+                super.onPrepareFromMediaId(mediaId, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onPrepareFromMediaId $mediaId $extras")
+            }
+
+            override fun onSetRepeatMode(repeatMode: Int) {
+                super.onSetRepeatMode(repeatMode)
+                Log.d(MEDIA_BUTTON_TAG, "onSetRepeatMode $repeatMode")
+            }
+
+            override fun onCommand(command: String?,
+                                   extras: Bundle?,
+                                   cb: ResultReceiver?) {
+                super.onCommand(command, extras, cb)
+                Log.d(MEDIA_BUTTON_TAG, "onCommand $command $extras $cb")
+            }
+
+            override fun onPause() {
+                Log.d(MEDIA_BUTTON_TAG, "onPause")
+                super.onPause()
+            }
+
+            override fun onPrepareFromSearch(query: String?,
+                                             extras: Bundle?) {
+                super.onPrepareFromSearch(query, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onPrepareFromSearch $query $extras")
+            }
+
+            override fun onPlayFromMediaId(mediaId: String?,
+                                           extras: Bundle?) {
+                super.onPlayFromMediaId(mediaId, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onPlayFromMediaId $mediaId $extras")
+            }
+
+            override fun onSetShuffleMode(shuffleMode: Int) {
+                super.onSetShuffleMode(shuffleMode)
+                Log.d(MEDIA_BUTTON_TAG, "onSetShuffleMode $shuffleMode")
+            }
+
+            override fun onPrepareFromUri(uri: Uri?,
+                                          extras: Bundle?) {
+                super.onPrepareFromUri(uri, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onPrepareFromUri $uri $extras")
+            }
+
+            override fun onPlayFromSearch(query: String?,
+                                          extras: Bundle?) {
+                super.onPlayFromSearch(query, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onPlayFromSearch $query $extras")
+            }
+
+            override fun onPlayFromUri(uri: Uri?,
+                                       extras: Bundle?) {
+                super.onPlayFromUri(uri, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onPlayFromUri $uri $extras")
+            }
+
+            override fun onSetRating(rating: RatingCompat?) {
+                super.onSetRating(rating)
+                Log.d(MEDIA_BUTTON_TAG, "onSetRating $rating")
+            }
+
+            override fun onSetRating(rating: RatingCompat?,
+                                     extras: Bundle?) {
+                super.onSetRating(rating, extras)
+                Log.d(MEDIA_BUTTON_TAG, "onSetRating $rating $extras")
+            }
+
+            override fun onSetCaptioningEnabled(enabled: Boolean) {
+                super.onSetCaptioningEnabled(enabled)
+                Log.d(MEDIA_BUTTON_TAG, "onSetCaptioningEnabled $enabled")
+            }
+        }
+    }
+
+    private val sessionAvailabilityListener: SessionAvailabilityListener by lazy {
+        object : SessionAvailabilityListener {
+            override fun onCastSessionAvailable() {
+                Log.d(CAST_TAG, "onCastSessionAvailable")
+                loadItem()
+            }
+
+            override fun onCastSessionUnavailable() {
+                Log.d(CAST_TAG, "onCastSessionUnavailable")
+                castPlayer = null
+            }
+        }
+    }
+
     private fun setMediaSessionActive() {
         mediaSession?.isActive = true
     }
@@ -167,7 +404,7 @@ class MediaService: Service() {
             }
 
         val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
-            mediaStyle.setMediaSession(mediaSession?.sessionToken)
+        mediaStyle.setMediaSession(mediaSession?.sessionToken)
             .setShowActionsInCompactView(0)
             .setShowCancelButton(true)
             .setCancelButtonIntent(
@@ -257,183 +494,6 @@ class MediaService: Service() {
         lastCommand[Source.LOCAL] = Command.STOP
 
         exoPlayer?.stop(true)
-    }
-
-    override fun onDestroy() {
-        castPlayer?.let {
-            it.stop()
-            it.release()
-            castPlayer = null
-        }
-
-        exoPlayer?.let {
-            it.stop()
-            it.release()
-            exoPlayer = null
-        }
-
-        mediaSession?.let {
-            it.isActive = false
-            it.release()
-            mediaSession = null
-        }
-
-        super.onDestroy()
-    }
-
-    override fun onBind(p0: Intent?): IBinder? {
-        return null
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-    }
-
-    override fun onRebind(intent: Intent?) {
-        super.onRebind(intent)
-    }
-
-    override fun dump(fd: FileDescriptor?,
-                      writer: PrintWriter?,
-                      args: Array<out String>?) {
-        super.dump(fd, writer, args)
-    }
-
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-    }
-
-    override fun onUnbind(intent: Intent?): Boolean {
-        return super.onUnbind(intent)
-    }
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    private val callback: MediaSessionCompat.Callback by lazy {
-        object : MediaSessionCompat.Callback() {
-            override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
-                return super.onMediaButtonEvent(mediaButtonEvent)
-            }
-
-            override fun onRewind() {
-                super.onRewind()
-            }
-
-            override fun onSeekTo(pos: Long) {
-                super.onSeekTo(pos)
-            }
-
-            override fun onAddQueueItem(description: MediaDescriptionCompat?) {
-                super.onAddQueueItem(description)
-            }
-
-            override fun onAddQueueItem(description: MediaDescriptionCompat?, index: Int) {
-                super.onAddQueueItem(description, index)
-            }
-
-            override fun onSkipToPrevious() {
-                super.onSkipToPrevious()
-            }
-
-            override fun onCustomAction(action: String?, extras: Bundle?) {
-                super.onCustomAction(action, extras)
-            }
-
-            override fun onPrepare() {
-                super.onPrepare()
-            }
-
-            override fun onFastForward() {
-                super.onFastForward()
-            }
-
-            override fun onPlay() {
-                super.onPlay()
-            }
-
-            override fun onStop() {
-                super.onStop()
-            }
-
-            override fun onSkipToQueueItem(id: Long) {
-                super.onSkipToQueueItem(id)
-            }
-
-            override fun onRemoveQueueItem(description: MediaDescriptionCompat?) {
-                super.onRemoveQueueItem(description)
-            }
-
-            override fun onSkipToNext() {
-                super.onSkipToNext()
-            }
-
-            override fun onPrepareFromMediaId(mediaId: String?, extras: Bundle?) {
-                super.onPrepareFromMediaId(mediaId, extras)
-            }
-
-            override fun onSetRepeatMode(repeatMode: Int) {
-                super.onSetRepeatMode(repeatMode)
-            }
-
-            override fun onCommand(command: String?, extras: Bundle?, cb: ResultReceiver?) {
-                super.onCommand(command, extras, cb)
-            }
-
-            override fun onPause() {
-                super.onPause()
-            }
-
-            override fun onPrepareFromSearch(query: String?, extras: Bundle?) {
-                super.onPrepareFromSearch(query, extras)
-            }
-
-            override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
-                super.onPlayFromMediaId(mediaId, extras)
-            }
-
-            override fun onSetShuffleMode(shuffleMode: Int) {
-                super.onSetShuffleMode(shuffleMode)
-            }
-
-            override fun onPrepareFromUri(uri: Uri?, extras: Bundle?) {
-                super.onPrepareFromUri(uri, extras)
-            }
-
-            override fun onPlayFromSearch(query: String?, extras: Bundle?) {
-                super.onPlayFromSearch(query, extras)
-            }
-
-            override fun onPlayFromUri(uri: Uri?, extras: Bundle?) {
-                super.onPlayFromUri(uri, extras)
-            }
-
-            override fun onSetRating(rating: RatingCompat?) {
-                super.onSetRating(rating)
-            }
-
-            override fun onSetRating(rating: RatingCompat?, extras: Bundle?) {
-                super.onSetRating(rating, extras)
-            }
-
-            override fun onSetCaptioningEnabled(enabled: Boolean) {
-                super.onSetCaptioningEnabled(enabled)
-            }
-        }
-    }
-
-
-    private val sessionAvailabilityListener: SessionAvailabilityListener by lazy {
-        object : SessionAvailabilityListener {
-            override fun onCastSessionAvailable() {
-                Log.d(CAST_TAG, "onCastSessionAvailable")
-                loadItem()
-            }
-
-            override fun onCastSessionUnavailable() {
-                Log.d(CAST_TAG, "onCastSessionUnavailable")
-                castPlayer = null
-            }
-        }
     }
 
     private fun loadItem() {
