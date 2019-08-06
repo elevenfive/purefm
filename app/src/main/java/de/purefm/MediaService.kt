@@ -1,6 +1,7 @@
 package de.purefm
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -10,6 +11,9 @@ import android.support.v4.media.RatingCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
+import android.view.KeyEvent
+import android.view.ViewConfiguration
+import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.session.MediaButtonReceiver
 import com.google.android.exoplayer2.*
@@ -59,9 +63,9 @@ class MediaService: Service() {
 
         companion object {
             fun fromOrdinalInt(ordinalInt: Int): Command = when (ordinalInt) {
+                INIT.ordinalInt -> INIT
                 PLAY.ordinalInt -> PLAY
                 STOP.ordinalInt -> STOP
-                INIT.ordinalInt -> INIT
                 else -> throw IllegalArgumentException()
             }
         }
@@ -116,7 +120,10 @@ class MediaService: Service() {
                                 startId: Int): Int {
         Log.d(TAG, "onStartCommand $intent ${intent?.extras}")
 
-        mediaSession?.let { MediaButtonReceiver.handleIntent(it, intent) }
+        mediaSession?.let {
+            val keyEvent = MediaButtonReceiver.handleIntent(it, intent)
+            keyEvent?.let { return super.onStartCommand(intent, flags, startId) }
+        }
 
         val commandOrdinalInt = intent?.getIntExtra("command", Command.INIT.ordinalInt) ?: Command.INIT.ordinalInt
         val command = Command.fromOrdinalInt(commandOrdinalInt)
@@ -216,7 +223,25 @@ class MediaService: Service() {
         object : MediaSessionCompat.Callback() {
             override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
                 Log.d(MEDIA_BUTTON_TAG, "onMediaButtonEvent $mediaButtonEvent ${mediaButtonEvent?.extras}")
-                return super.onMediaButtonEvent(mediaButtonEvent)
+
+                val keyEvent = mediaButtonEvent?.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+
+                if (keyEvent == null || keyEvent.action != KeyEvent.ACTION_DOWN) {
+                    return false
+                }
+
+                when (keyEvent.keyCode) {
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+
+                        return true
+                    }
+
+                    KeyEvent.KEYCODE_MEDIA_STOP -> {
+                        onStop()
+                    }
+                }
+
+                return false
             }
 
             override fun onRewind() {
@@ -264,11 +289,13 @@ class MediaService: Service() {
             override fun onPlay() {
                 super.onPlay()
                 Log.d(MEDIA_BUTTON_TAG, "onPlay")
+                play(lastSource)
             }
 
             override fun onStop() {
                 super.onStop()
                 Log.d(MEDIA_BUTTON_TAG, "onStop")
+                stop(lastSource)
             }
 
             override fun onSkipToQueueItem(id: Long) {
@@ -404,24 +431,33 @@ class MediaService: Service() {
             }
 
         val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
-        mediaStyle.setMediaSession(mediaSession?.sessionToken)
+            .setMediaSession(mediaSession?.sessionToken)
             .setShowActionsInCompactView(0)
-            .setShowCancelButton(true)
-            .setCancelButtonIntent(
-                MediaButtonReceiver.buildMediaButtonPendingIntent(
-                    applicationContext, PlaybackStateCompat.ACTION_STOP
-                )
-            )
 
-        val notificationBuilder = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("foo")
+        val notificationBuilder = androidx.core.app.NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setContentTitle("pure-fm.de")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
-            .setTicker("pure-fm.de")
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(
+                NotificationCompat.Action(R.drawable.exo_icon_pause, "stop",
+                    MediaButtonReceiver.buildMediaButtonPendingIntent(
+                        applicationContext, PlaybackStateCompat.ACTION_PLAY_PAUSE
+                    )
+                )
+            )
+            .addAction(
+                NotificationCompat.Action(R.drawable.exo_icon_stop, "pause",
+                    MediaButtonReceiver.buildMediaButtonPendingIntent(
+                        applicationContext, PlaybackStateCompat.ACTION_STOP
+                    )
+                )
+            )
             .setStyle(mediaStyle)
 
-        val notification = notificationBuilder.build()
-        startForeground(1, notification)
+        lastTitle?.let { notificationBuilder.setContentText(it) }
+
+        startForeground(1, notificationBuilder.build())
     }
 
     private fun play(source: Source) {
@@ -468,6 +504,9 @@ class MediaService: Service() {
             setSessionAvailabilityListener(null)
             stop(true)
         }
+
+        stopForeground(true)
+        sendBroadcast()
     }
 
     private fun playLocally() {
@@ -494,6 +533,8 @@ class MediaService: Service() {
         lastCommand[Source.LOCAL] = Command.STOP
 
         exoPlayer?.stop(true)
+        stopForeground(true)
+        sendBroadcast()
     }
 
     private fun loadItem() {
@@ -859,4 +900,12 @@ class MediaService: Service() {
             }
         }
     }
+}
+
+fun mediaServiceIntent(context: Context,
+                       command: MediaService.Command? = null): Intent {
+    val intent = Intent()
+    intent.setClass(context, MediaService::class.java)
+    command?.let { intent.putExtra("command", it.ordinalInt) }
+    return intent
 }

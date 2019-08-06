@@ -15,9 +15,6 @@ import kotlinx.android.synthetic.main.activity_main.*
 private const val TAG = "MainActivity"
 
 class MainActivity : AppCompatActivity() {
-
-    private var setup = false
-
     private val filter: IntentFilter by lazy { IntentFilter(SERVICE_STATUS_ACTION) }
 
     private val broadcastReceiver: BroadcastReceiver by lazy {
@@ -31,22 +28,12 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "onCreate $savedInstanceState")
 
         setContentView(R.layout.activity_main)
+
         button.isSelected = savedInstanceState?.getSerializable("command") == MediaService.Command.PLAY
-
-        button.setOnClickListener {
-            val intent = serviceIntent()
-
-            if (button.isSelected) {
-                intent.putExtra("command", MediaService.Command.STOP.ordinalInt)
-            } else {
-                intent.putExtra("command", MediaService.Command.PLAY.ordinalInt)
-            }
-
-            startService(intent)
-        }
+        button.setOnClickListener { onButtonClick() }
 
         LocalBroadcastManager.getInstance(this).registerReceiver(broadcastReceiver, filter)
-        startService(serviceIntent())
+        startService(mediaServiceIntent(applicationContext))
     }
 
     override fun onStart() {
@@ -86,6 +73,16 @@ class MainActivity : AppCompatActivity() {
     //
     // Stereo / 44.1 / 32 bits per sample, bitrate 128 kb/s
 
+    private fun onButtonClick() {
+        val command = if (button.isSelected) {
+            MediaService.Command.STOP
+        } else {
+            MediaService.Command.PLAY
+        }
+
+        startService(mediaServiceIntent(applicationContext, command))
+    }
+
     private fun onReceive(p1: Intent) {
         Log.d(TAG, "onReceive $p1 ${p1.extras}")
 
@@ -100,11 +97,5 @@ class MainActivity : AppCompatActivity() {
                 track_title_text_view.text = null
             }
         }
-    }
-
-    private fun serviceIntent(): Intent {
-        val intent = Intent()
-        intent.setClass(this, MediaService::class.java)
-        return intent
     }
 }
