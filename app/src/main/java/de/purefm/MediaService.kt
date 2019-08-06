@@ -4,10 +4,14 @@ import android.app.*
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
-import android.os.Build
-import android.os.IBinder
+import android.os.*
+import android.support.v4.media.MediaDescriptionCompat
+import android.support.v4.media.RatingCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.media.session.MediaButtonReceiver
 import com.google.android.exoplayer2.*
 import com.google.android.exoplayer2.analytics.AnalyticsListener
 import com.google.android.exoplayer2.audio.AudioAttributes
@@ -31,13 +35,15 @@ import com.google.android.gms.cast.framework.CastStateListener
 import java.io.FileDescriptor
 import java.io.IOException
 import java.io.PrintWriter
+import java.lang.StringBuilder
 
-const val CAST_TAG =  "purefm_cast"
-const val LOCAL_TAG = "purefm_local"
+const val CAST_TAG =  "cast"
+const val LOCAL_TAG = "local"
 const val SERVICE_STATUS_ACTION = "de.purefm.SERVICE_STATUS"
 const val CHANNEL_ID = "106.4"
+private const val TAG = "MediaService"
 
-class MediaService(private val castContext: CastContext = CastContext.getSharedInstance(MainApplication.instance)): Service() {
+class MediaService: Service() {
     enum class Status(val ordinalInt: Int) {
         STOPPED(0), STARTING(1), PLAYING(2);
     }
@@ -59,6 +65,8 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
         }
     }
 
+    private lateinit var castContext: CastContext
+
     private var castPlayer: CastPlayer? = null
 
     private var exoPlayer: ExoPlayer? = null
@@ -73,8 +81,15 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
 
     private var lastSource: Source = Source.LOCAL
 
+    private var lastTitle: String? = null
+
+    private var mediaSession: MediaSessionCompat? = null
+
     override fun onCreate() {
         super.onCreate()
+
+        Log.d(TAG, "onCreate")
+        castContext = CastContext.getSharedInstance(applicationContext)
         castContext.addCastStateListener(casteStateListener)
 
         val simpleExoPlayer = ExoPlayerFactory.newSimpleInstance(this)
@@ -86,11 +101,19 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
         player.playWhenReady = false
         player.addListener(eventListener)
         castPlayer = player
+
+        val mediaSessionCompat = MediaSessionCompat(applicationContext, "session tag")
+        mediaSessionCompat.setCallback(callback)
+        mediaSession = mediaSessionCompat
     }
 
     override fun onStartCommand(intent: Intent?,
                                 flags: Int,
                                 startId: Int): Int {
+        Log.d(TAG, "onStartCommand $intent ${intent?.extras}")
+
+        mediaSession?.let { MediaButtonReceiver.handleIntent(it, intent) }
+
         val commandOrdinalInt = intent?.getIntExtra("command", Command.INIT.ordinalInt) ?: Command.INIT.ordinalInt
         val command = Command.fromOrdinalInt(commandOrdinalInt)
 
@@ -101,11 +124,13 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 Command.PLAY -> {
                     play(lastSource)
                     startForeground()
+                    setMediaSessionActive()
                 }
 
                 Command.STOP -> {
                     stop(lastSource)
                     stopForeground(true)
+                    setMediaSessionInactive()
                 }
             }
         }
@@ -114,15 +139,26 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
         return super.onStartCommand(intent, flags, startId)
     }
 
+    private fun setMediaSessionActive() {
+        mediaSession?.isActive = true
+    }
+
+    private fun setMediaSessionInactive() {
+        mediaSession?.isActive = false
+    }
+
     private fun startForeground() {
+        Log.d(TAG, "startForeground")
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "channel"
-            val descriptionText = "description"
+            val name = getString(R.string.notification_channel_name)
+            val descriptionText = getString(R.string.notification_channel_description)
             val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val mChannel = NotificationChannel(CHANNEL_ID, name, importance)
-            mChannel.description = descriptionText
+            val notificationChannel = NotificationChannel(CHANNEL_ID, name, importance)
+            notificationChannel.description = descriptionText
+            notificationChannel.vibrationPattern = null
             val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(mChannel)
+            notificationManager.createNotificationChannel(notificationChannel)
         }
 
         val pendingIntent: PendingIntent =
@@ -130,14 +166,24 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 PendingIntent.getActivity(this, 0, intent, 0)
             }
 
-        val notification: Notification = Notification.Builder(this, CHANNEL_ID)
+        val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
+            mediaStyle.setMediaSession(mediaSession?.sessionToken)
+            .setShowActionsInCompactView(0)
+            .setShowCancelButton(true)
+            .setCancelButtonIntent(
+                MediaButtonReceiver.buildMediaButtonPendingIntent(
+                    applicationContext, PlaybackStateCompat.ACTION_STOP
+                )
+            )
+
+        val notificationBuilder = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("foo")
-            .setContentText("foo")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
-            .setTicker("foo")
-            .build()
+            .setTicker("pure-fm.de")
+            .setStyle(mediaStyle)
 
+        val notification = notificationBuilder.build()
         startForeground(1, notification)
     }
 
@@ -226,6 +272,12 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
             exoPlayer = null
         }
 
+        mediaSession?.let {
+            it.isActive = false
+            it.release()
+            mediaSession = null
+        }
+
         super.onDestroy()
     }
 
@@ -257,6 +309,119 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    private val callback: MediaSessionCompat.Callback by lazy {
+        object : MediaSessionCompat.Callback() {
+            override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
+                return super.onMediaButtonEvent(mediaButtonEvent)
+            }
+
+            override fun onRewind() {
+                super.onRewind()
+            }
+
+            override fun onSeekTo(pos: Long) {
+                super.onSeekTo(pos)
+            }
+
+            override fun onAddQueueItem(description: MediaDescriptionCompat?) {
+                super.onAddQueueItem(description)
+            }
+
+            override fun onAddQueueItem(description: MediaDescriptionCompat?, index: Int) {
+                super.onAddQueueItem(description, index)
+            }
+
+            override fun onSkipToPrevious() {
+                super.onSkipToPrevious()
+            }
+
+            override fun onCustomAction(action: String?, extras: Bundle?) {
+                super.onCustomAction(action, extras)
+            }
+
+            override fun onPrepare() {
+                super.onPrepare()
+            }
+
+            override fun onFastForward() {
+                super.onFastForward()
+            }
+
+            override fun onPlay() {
+                super.onPlay()
+            }
+
+            override fun onStop() {
+                super.onStop()
+            }
+
+            override fun onSkipToQueueItem(id: Long) {
+                super.onSkipToQueueItem(id)
+            }
+
+            override fun onRemoveQueueItem(description: MediaDescriptionCompat?) {
+                super.onRemoveQueueItem(description)
+            }
+
+            override fun onSkipToNext() {
+                super.onSkipToNext()
+            }
+
+            override fun onPrepareFromMediaId(mediaId: String?, extras: Bundle?) {
+                super.onPrepareFromMediaId(mediaId, extras)
+            }
+
+            override fun onSetRepeatMode(repeatMode: Int) {
+                super.onSetRepeatMode(repeatMode)
+            }
+
+            override fun onCommand(command: String?, extras: Bundle?, cb: ResultReceiver?) {
+                super.onCommand(command, extras, cb)
+            }
+
+            override fun onPause() {
+                super.onPause()
+            }
+
+            override fun onPrepareFromSearch(query: String?, extras: Bundle?) {
+                super.onPrepareFromSearch(query, extras)
+            }
+
+            override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
+                super.onPlayFromMediaId(mediaId, extras)
+            }
+
+            override fun onSetShuffleMode(shuffleMode: Int) {
+                super.onSetShuffleMode(shuffleMode)
+            }
+
+            override fun onPrepareFromUri(uri: Uri?, extras: Bundle?) {
+                super.onPrepareFromUri(uri, extras)
+            }
+
+            override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+                super.onPlayFromSearch(query, extras)
+            }
+
+            override fun onPlayFromUri(uri: Uri?, extras: Bundle?) {
+                super.onPlayFromUri(uri, extras)
+            }
+
+            override fun onSetRating(rating: RatingCompat?) {
+                super.onSetRating(rating)
+            }
+
+            override fun onSetRating(rating: RatingCompat?, extras: Bundle?) {
+                super.onSetRating(rating, extras)
+            }
+
+            override fun onSetCaptioningEnabled(enabled: Boolean) {
+                super.onSetCaptioningEnabled(enabled)
+            }
+        }
+    }
+
+
     private val sessionAvailabilityListener: SessionAvailabilityListener by lazy {
         object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
@@ -276,7 +441,8 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     }
 
     private fun progressiveMediaSource() =
-        ProgressiveMediaSource.Factory(DefaultHttpDataSourceFactory(Util.getUserAgent(this, "pure-fm.de (Android)")))
+        ProgressiveMediaSource.Factory(DefaultHttpDataSourceFactory(
+            Util.getUserAgent(this, "pure-fm.de (Android)")))
             .createMediaSource(Uri.parse("http://radionetz.de:8000/purefm-bln.mp3"))
 
     private fun mediaQueueItem(): MediaQueueItem {
@@ -397,7 +563,19 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 trackGroups: TrackGroupArray?,
                 trackSelections: TrackSelectionArray?
             ) {
-                Log.d(LOCAL_TAG, "onTracksChanged $trackSelections")
+                val sb = StringBuilder()
+
+                trackSelections?.all?.forEach {
+                    it?.let {
+                        if (sb.isNotEmpty()) {
+                            sb.append("; ")
+                        }
+
+                        sb.append(it.getFormat(it.selectedIndex))
+                    }
+                }
+
+                Log.d(LOCAL_TAG, "onTracksChanged $sb")
             }
 
             override fun onPositionDiscontinuity(
@@ -489,7 +667,10 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 metadata: Metadata?
             ) {
                 val entry: IcyInfo = metadata?.get(0) as IcyInfo
-                Log.d(LOCAL_TAG, "onMetadata title=$entry.title")
+                val title = entry.title
+                Log.d(LOCAL_TAG, "onMetadata title=$title")
+                lastTitle = title
+                sendBroadcast()
             }
         }
     }
@@ -497,24 +678,37 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
     private fun handleStateChange(source: Source,
                                   playbackState: Int) {
         when (playbackState) {
-
-
             Player.STATE_IDLE -> {
                 Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_IDLE")
+
+                if (lastStatus[source] != Status.STOPPED) {
+                    lastStatus[source] = Status.STOPPED
+                    sendBroadcast()
+                }
             }
 
             Player.STATE_BUFFERING -> {
                 Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_BUFFERING")
+
+                if (lastStatus[source] != Status.STARTING) {
+                    lastStatus[source] = Status.STARTING
+                    sendBroadcast()
+                }
             }
 
             Player.STATE_READY -> {
                 Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_READY")
-                lastStatus[Source.LOCAL] = Status.PLAYING
-                sendBroadcast()
+
+                if (lastStatus[source] != Status.PLAYING) {
+                    lastStatus[source] = Status.PLAYING
+                    sendBroadcast()
+                }
             }
 
             Player.STATE_ENDED -> {
                 Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_ENDED")
+                lastStatus[source] = Status.STOPPED
+                sendBroadcast()
             }
 
             else -> return
@@ -526,6 +720,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
         broadcast.putExtra("status", lastStatus[lastSource]?.ordinalInt)
         broadcast.putExtra("source", lastSource.ordinalInt)
         broadcast.putExtra("command", lastCommand[lastSource]?.ordinalInt)
+        broadcast.putExtra("title", lastTitle)
         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(broadcast)
     }
 
@@ -589,22 +784,7 @@ class MediaService(private val castContext: CastContext = CastContext.getSharedI
                 playWhenReady: Boolean,
                 playbackState: Int
             ) {
-                when (playbackState) {
-                    Player.STATE_IDLE -> Log.d(CAST_TAG, "onPlayerStateChanged STATE_IDLE")
-
-                    Player.STATE_BUFFERING -> {
-                        Log.d(CAST_TAG, "onPlayerStateChanged STATE_BUFFERING")
-                        sendBroadcast()
-                    }
-
-                    Player.STATE_READY -> {
-                        Log.d(CAST_TAG, "onPlayerStateChanged STATE_READY")
-                        lastStatus[Source.CAST] = Status.PLAYING
-                        sendBroadcast()
-                    }
-
-                    Player.STATE_ENDED -> Log.d(CAST_TAG, "onPlayerStateChanged STATE_ENDED")
-                }
+                handleStateChange(Source.CAST, playbackState)
             }
         }
     }

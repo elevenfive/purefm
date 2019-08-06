@@ -12,6 +12,8 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.gms.cast.framework.CastButtonFactory
 import kotlinx.android.synthetic.main.activity_main.*
 
+private const val TAG = "MainActivity"
+
 class MainActivity : AppCompatActivity() {
 
     private var castMenu: Menu? = null
@@ -28,6 +30,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate $savedInstanceState")
+
         setContentView(R.layout.activity_main)
         button.isSelected = savedInstanceState?.getSerializable("command") == MediaService.Command.PLAY
 
@@ -49,19 +53,28 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        Log.d(TAG, "onStart")
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        Log.d(TAG, "onRestart")
     }
 
     override fun onStop() {
+        Log.d(TAG, "onStop")
         super.onStop()
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "onDestroy")
         LocalBroadcastManager.getInstance(this).unregisterReceiver(broadcastReceiver)
         super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         super.onCreateOptionsMenu(menu)
+        Log.d(TAG, "onCreateOptionsMenu $menu")
         menuInflater.inflate(R.menu.menu, menu)
         castMenu = menu
 
@@ -72,17 +85,24 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    // <img alt="play" src="play1.png" onclick="soundManager.play('purestream')" align="middle" height="20" width="20">
-    //
     // http://radionetz.de:8000/purefm-bln.mp3
     // stream contains mp3 metadata.  Title Genre (comma separated), Now Playing
     //
     // Stereo / 44.1 / 32 bits per sample, bitrate 128 kb/s
 
     private fun onReceive(p1: Intent) {
+        Log.d(TAG, "onReceive $p1 ${p1.extras}")
+
         when (p1.getIntExtra("status", -1)) {
-            MediaService.Status.PLAYING.ordinalInt -> button.isSelected = true
-            MediaService.Status.STOPPED.ordinalInt -> button.isSelected = false
+            MediaService.Status.PLAYING.ordinalInt -> {
+                button.isSelected = true
+                track_title_text_view.text = p1.getStringExtra("title")
+            }
+
+            MediaService.Status.STOPPED.ordinalInt -> {
+                button.isSelected = false
+                track_title_text_view.text = null
+            }
         }
 
         if (!setup) {

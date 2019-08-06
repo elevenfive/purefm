@@ -1,7 +1,10 @@
 <resources>
     <string name="app_name">purefm</string>
     <string name="now_on_air">Now On Air: %s \n (Since %s)</string>
-    <string name="media_route_menu_title" translatable="false">foo</string>
+    <string name="media_route_menu_title" translatable="false">Media Route Menu Title</string>
+    <string name="notification_channel_name" translatable="false">Background Playback</string>
+    <string name="notification_channel_description" translatable="false">Enables the app to play music while you use other apps, and with the display off.</string>
+
     <string name="url_hh" translatable="false">http://radionetz.de:8000/purefm-hh.mp3</string>
     <string name="url_bln" translatable="false">http://radionetz.de:8000/purefm-bln.mp3</string>
     <string name="url_by" translatable="false">http://radionetz.de:8000/purefm-by.mp3</string>

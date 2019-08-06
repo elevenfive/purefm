@@ -4,10 +4,10 @@
         xmlns:dist="http://schemas.android.com/apk/distribution"
         xmlns:tools="http://schemas.android.com/tools" package="de.purefm">
 
-    <dist:module
-            dist:instant="true"/>
+    <dist:module dist:instant="true"/>
 
     <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
@@ -24,7 +24,6 @@
         <activity android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
-
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
@@ -32,6 +31,19 @@
         <meta-data
                 android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
                 android:value="com.google.android.exoplayer2.ext.cast.DefaultCastOptionsProvider" />
-        <service android:name=".MediaService"/>
+
+        <service
+                android:name=".MediaService"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </service>
+
+        <receiver android:name="androidx.media.session.MediaButtonReceiver" >
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
