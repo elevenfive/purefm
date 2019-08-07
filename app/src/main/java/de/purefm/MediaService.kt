@@ -112,7 +112,7 @@ class MediaService: Service() {
         castPlayer = player
 
         val mediaSessionCompat = MediaSessionCompat(applicationContext, "MediaSessionCompat")
-        mediaSessionCompat.setCallback(callback)
+        mediaSessionCompat.setCallback(mediaSessionCallback)
         mediaSession = mediaSessionCompat
     }
 
@@ -229,7 +229,7 @@ class MediaService: Service() {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    private val callback: MediaSessionCompat.Callback by lazy {
+    private val mediaSessionCallback: MediaSessionCompat.Callback by lazy {
         object : MediaSessionCompat.Callback() {
             override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
                 Log.d(MEDIA_BUTTON_TAG, "onMediaButtonEvent $mediaButtonEvent ${mediaButtonEvent?.extras}")
@@ -396,7 +396,7 @@ class MediaService: Service() {
         }
     }
 
-    private val sessionAvailabilityListener: SessionAvailabilityListener by lazy {
+    private val castSessionAvailabilityListener: SessionAvailabilityListener by lazy {
         object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
                 Log.d(CAST_TAG, "onCastSessionAvailable")
@@ -502,7 +502,7 @@ class MediaService: Service() {
                 loadItem()
             }
 
-            setSessionAvailabilityListener(sessionAvailabilityListener)
+            setSessionAvailabilityListener(castSessionAvailabilityListener)
         }
     }
 
@@ -552,7 +552,11 @@ class MediaService: Service() {
     }
 
     private fun loadItem() {
-        castPlayer?.loadItem(mediaQueueItem(), C.TIME_UNSET)
+        castPlayer?.let {
+            val mediaQueueItem = mediaQueueItem()
+            it.loadItem(mediaQueueItem, C.TIME_UNSET)
+            Log.d(CAST_TAG, "loadItem ${mediaQueueItem.media}")
+        }
     }
 
     private fun progressiveMediaSource() =
