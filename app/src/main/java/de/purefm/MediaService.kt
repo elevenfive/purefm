@@ -636,6 +636,8 @@ class MediaService: Service() {
             Util.getUserAgent(this, "pure-fm.de (Android)")))
             .createMediaSource(Uri.parse("http://radionetz.de:8000/purefm-bln.mp3"))
 
+    // Radioeins https://rbb-dg-rbb-https-fra-dtag-cdn.sslcast.addradio.de/rbb/radioeins/live/mp3/128/stream.mp3
+
     private fun mediaQueueItem(): MediaQueueItem {
         val url  = "http://radionetz.de:8000/purefm-bln.mp3"
         val mediaMetadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MUSIC_TRACK)
