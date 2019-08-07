@@ -861,8 +861,11 @@ class MediaService: Service() {
 
             Player.STATE_ENDED -> {
                 Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_ENDED")
-                lastStatus[source] = Status.STOPPED
-                sendBroadcast()
+
+                if (lastStatus[source] != Status.STOPPED) {
+                    lastStatus[source] = Status.STOPPED
+                    sendBroadcast()
+                }
             }
 
             else -> return
@@ -964,7 +967,7 @@ class MediaService: Service() {
                 CastState.CONNECTING -> {
                     Log.d(CAST_TAG, "onCastStateChanged: CONNECTING")
 
-                    if (lastSource != Source.CAST) {
+                    if (lastSource == Source.LOCAL) {
                         lastSource = Source.CAST
                     }
                 }
@@ -972,8 +975,13 @@ class MediaService: Service() {
                 CastState.CONNECTED -> {
                     Log.d(CAST_TAG, "onCastStateChanged: CONNECTED")
 
-                    if (lastSource != Source.CAST) {
+                    if (lastSource == Source.LOCAL) {
                         lastSource = Source.CAST
+                    }
+
+                    if (lastCommand[Source.LOCAL] == Command.PLAY) {
+                        stopLocally()
+                        playCastally()
                     }
                 }
             }
