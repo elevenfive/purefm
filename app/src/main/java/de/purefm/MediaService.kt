@@ -50,7 +50,7 @@ const val CHANNEL_ID = "106.4"
 
 class MediaService: Service() {
     enum class Status(val ordinalInt: Int) {
-        STOPPED(0), STARTING(1), PLAYING(2), PAUSED(3);
+        STOPPED(0), STARTING(1), PLAYING(2);
     }
 
     enum class Source(val ordinalInt: Int) {
@@ -58,14 +58,13 @@ class MediaService: Service() {
     }
 
     enum class Command(val ordinalInt: Int) {
-        INIT(0), PLAY(1), STOP(2), PAUSE(3);
+        INIT(0), PLAY(1), STOP(2);
 
         companion object {
             fun fromOrdinalInt(ordinalInt: Int): Command = when (ordinalInt) {
                 INIT.ordinalInt -> INIT
                 PLAY.ordinalInt -> PLAY
                 STOP.ordinalInt -> STOP
-                PAUSE.ordinalInt -> PAUSE
                 else -> throw IllegalArgumentException()
             }
         }
@@ -125,7 +124,7 @@ class MediaService: Service() {
 
             keyEvent?.let {
                 val keyName = when (keyEvent.keyCode) {
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "play/pause"
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> "play"
                     KeyEvent.KEYCODE_MEDIA_STOP -> "stop"
                     else -> "unknown"
                 }
@@ -153,10 +152,6 @@ class MediaService: Service() {
                     stop(lastSource)
                     stopForeground(true)
                     setMediaSessionInactive()
-                }
-
-                Command.PAUSE -> {
-                    pause(lastSource)
                 }
             }
         }
@@ -486,13 +481,6 @@ class MediaService: Service() {
         }
     }
 
-    private fun pause(source: Source) {
-        when (source) {
-            Source.CAST -> pauseCastally()
-            Source.LOCAL -> pauseLocally()
-        }
-    }
-
     private fun stop(source: Source) {
         when (source) {
             Source.CAST -> stopCastally()
@@ -518,25 +506,11 @@ class MediaService: Service() {
         }
     }
 
-    private fun pauseCastally() {
-        if (lastStatus[Source.CAST] == Status.PAUSED) {
-            return
-        }
-
-        lastStatus[Source.CAST] = Status.PAUSED
-        lastCommand[Source.CAST] = Command.PAUSE
-
-        castPlayer?.apply {
-            // ????
-        }
-    }
-
     private fun stopCastally() {
         if (lastStatus[Source.CAST] == Status.STOPPED) {
             return
         }
 
-        lastSource = Source.LOCAL
         lastStatus[Source.CAST] = Status.STOPPED
         lastCommand[Source.CAST] = Command.STOP
 
@@ -561,19 +535,6 @@ class MediaService: Service() {
         exoPlayer?.apply {
             playWhenReady = true
             prepare(progressiveMediaSource())
-        }
-    }
-
-    private fun pauseLocally() {
-        if (lastStatus[Source.LOCAL] == Status.PAUSED) {
-            return
-        }
-
-        lastStatus[Source.LOCAL] = Status.PAUSED
-        lastCommand[Source.LOCAL] = Command.PAUSE
-
-        exoPlayer?.apply {
-            // ???
         }
     }
 
@@ -959,8 +920,13 @@ class MediaService: Service() {
                 CastState.NOT_CONNECTED -> {
                     Log.d(CAST_TAG, "onCastStateChanged: NOT_CONNECTED")
 
-                    if (lastSource == Source.CAST && lastStatus[Source.CAST] != Status.STOPPED) {
-                        stopCastally()
+                    if (lastSource == Source.CAST) {
+                        lastSource = Source.LOCAL
+
+                        if (lastStatus[Source.CAST] == Status.PLAYING) {
+                            stopCastally()
+                            playLocally()
+                        }
                     }
                 }
 
