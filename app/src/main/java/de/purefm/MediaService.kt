@@ -18,9 +18,11 @@ import androidx.media.session.MediaButtonReceiver
 import com.google.android.exoplayer2.*
 import com.google.android.exoplayer2.analytics.AnalyticsListener
 import com.google.android.exoplayer2.audio.AudioAttributes
+import com.google.android.exoplayer2.audio.AudioListener
 import com.google.android.exoplayer2.ext.cast.CastPlayer
 import com.google.android.exoplayer2.ext.cast.SessionAvailabilityListener
 import com.google.android.exoplayer2.metadata.Metadata
+import com.google.android.exoplayer2.metadata.MetadataOutput
 import com.google.android.exoplayer2.metadata.icy.IcyInfo
 import com.google.android.exoplayer2.source.MediaSourceEventListener
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
@@ -32,9 +34,7 @@ import com.google.android.exoplayer2.util.Util
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaMetadata
 import com.google.android.gms.cast.MediaQueueItem
-import com.google.android.gms.cast.framework.CastContext
-import com.google.android.gms.cast.framework.CastState
-import com.google.android.gms.cast.framework.CastStateListener
+import com.google.android.gms.cast.framework.*
 import java.io.FileDescriptor
 import java.io.IOException
 import java.io.PrintWriter
@@ -110,6 +110,7 @@ class MediaService: Service() {
         player.playWhenReady = false
         player.addListener(castEventListener)
         castPlayer = player
+        castContext.sessionManager.addSessionManagerListener(sessionManagerListener)
 
         val mediaSessionCompat = MediaSessionCompat(applicationContext, "MediaSessionCompat")
         mediaSessionCompat.setCallback(mediaSessionCallback)
@@ -228,6 +229,76 @@ class MediaService: Service() {
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    private val sessionManagerListener: SessionManagerListener<Session> by lazy {
+        object : SessionManagerListener<Session> {
+            override fun onSessionStarted(p0: Session?,
+                                          p1: String?) {
+
+            }
+
+            override fun onSessionResumeFailed(p0: Session?,
+                                               p1: Int) {
+
+            }
+
+            override fun onSessionSuspended(p0: Session?,
+                                            p1: Int) {
+
+            }
+
+            override fun onSessionEnded(p0: Session?,
+                                        p1: Int) {
+
+            }
+
+            override fun onSessionResumed(p0: Session?,
+                                          p1: Boolean) {
+
+            }
+
+            override fun onSessionStarting(p0: Session?) {
+
+            }
+
+            override fun onSessionResuming(p0: Session?,
+                                           p1: String?) {
+
+            }
+
+            override fun onSessionEnding(p0: Session?) {
+
+            }
+
+            override fun onSessionStartFailed(p0: Session?,
+                                              p1: Int) {
+
+            }
+
+        }
+    }
+
+    private val audioListener: AudioListener by lazy {
+        object : AudioListener {
+            override fun onAudioAttributesChanged(audioAttributes: AudioAttributes?) {
+                Log.d(CAST_TAG, "onAudioAttributesChanged: $audioAttributes")
+            }
+
+            override fun onVolumeChanged(volume: Float) {
+                Log.d(CAST_TAG, "onVolumeChanged: $volume")
+            }
+
+            override fun onAudioSessionId(audioSessionId: Int) {
+                Log.d(CAST_TAG, "onAudioSessionId: $audioSessionId")
+            }
+        }
+    }
+
+    private val metadataOutput: MetadataOutput by lazy {
+        MetadataOutput { metadata ->
+            Log.d(CAST_TAG, "onMetadata: $metadata")
+        }
+    }
 
     private val mediaSessionCallback: MediaSessionCompat.Callback by lazy {
         object : MediaSessionCompat.Callback() {
@@ -421,6 +492,11 @@ class MediaService: Service() {
     private fun startForeground() {
         Log.d(TAG, "startForeground")
 
+        val notification = foregroundNotification()
+        startForeground(1, notification)
+    }
+
+    private fun foregroundNotification(): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = getString(R.string.notification_channel_name)
             val descriptionText = getString(R.string.notification_channel_description)
@@ -440,31 +516,27 @@ class MediaService: Service() {
         val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
             .setMediaSession(mediaSession?.sessionToken)
             .setShowActionsInCompactView(0)
+            .setShowCancelButton(false)
 
-        val notificationBuilder = androidx.core.app.NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+        val notificationBuilder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle("pure-fm.de")
             .setSmallIcon(R.drawable.cast_ic_notification_small_icon)
             .setContentIntent(pendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(
-                NotificationCompat.Action(R.drawable.exo_icon_pause, "stop",
-                    MediaButtonReceiver.buildMediaButtonPendingIntent(
-                        applicationContext, PlaybackStateCompat.ACTION_PLAY_PAUSE
-                    )
-                )
-            )
-            .addAction(
-                NotificationCompat.Action(R.drawable.exo_icon_stop, "pause",
-                    MediaButtonReceiver.buildMediaButtonPendingIntent(
-                        applicationContext, PlaybackStateCompat.ACTION_STOP
-                    )
-                )
-            )
             .setStyle(mediaStyle)
+            .setAutoCancel(false)
 
+        notificationBuilder.addAction(
+            NotificationCompat.Action(
+                R.drawable.exo_icon_stop, "stop",
+                MediaButtonReceiver.buildMediaButtonPendingIntent(
+                    applicationContext, PlaybackStateCompat.ACTION_STOP
+                )
+            )
+        )
 
         lastTitle?.let { notificationBuilder.setContentText(it) }
-        startForeground(1, notificationBuilder.build())
+        return notificationBuilder.build()
     }
 
     private fun play(source: Source) {
@@ -886,20 +958,17 @@ class MediaService: Service() {
                 reason: Int
             ) {
                 when (reason) {
-                    Player.TIMELINE_CHANGE_REASON_PREPARED -> Log.d(
-                        CAST_TAG,
-                        "onTimelineChanged TIMELINE_CHANGE_REASON_PREPARED"
-                    )
+                    Player.TIMELINE_CHANGE_REASON_PREPARED -> {
+                        Log.d(CAST_TAG, "onTimelineChanged TIMELINE_CHANGE_REASON_PREPARED")
+                    }
 
-                    Player.TIMELINE_CHANGE_REASON_RESET -> Log.d(
-                        CAST_TAG,
-                        "onTimelineChanged TIMELINE_CHANGE_REASON_RESET"
-                    )
+                    Player.TIMELINE_CHANGE_REASON_RESET -> {
+                        Log.d(CAST_TAG, "onTimelineChanged TIMELINE_CHANGE_REASON_RESET")
+                    }
 
-                    Player.TIMELINE_CHANGE_REASON_DYNAMIC -> Log.d(
-                        CAST_TAG,
-                        "onTimelineChanged TIMELINE_CHANGE_REASON_DYNAMIC"
-                    )
+                    Player.TIMELINE_CHANGE_REASON_DYNAMIC -> {
+                        Log.d(CAST_TAG, "onTimelineChanged TIMELINE_CHANGE_REASON_DYNAMIC")
+                    }
                 }
             }
 
