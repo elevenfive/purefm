@@ -109,7 +109,7 @@ class MediaService: Service() {
 
         val player = CastPlayer(castContext)
         player.playWhenReady = false
-        player.addListener(eventListener)
+        player.addListener(castEventListener)
         castPlayer = player
 
         val mediaSessionCompat = MediaSessionCompat(applicationContext, "MediaSessionCompat")
@@ -120,15 +120,24 @@ class MediaService: Service() {
     override fun onStartCommand(intent: Intent?,
                                 flags: Int,
                                 startId: Int): Int {
-        Log.d(TAG, "onStartCommand $intent ${intent?.extras}")
-
         mediaSession?.let {
             val keyEvent = MediaButtonReceiver.handleIntent(it, intent)
-            keyEvent?.let { return super.onStartCommand(intent, flags, startId) }
+
+            keyEvent?.let {
+                val keyName = when (keyEvent.keyCode) {
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "play/pause"
+                    KeyEvent.KEYCODE_MEDIA_STOP -> "stop"
+                    else -> "unknown"
+                }
+
+                Log.d(TAG, "onStartCommand $keyName")
+                return super.onStartCommand(intent, flags, startId)
+            }
         }
 
         val commandOrdinalInt = intent?.getIntExtra("command", Command.INIT.ordinalInt) ?: Command.INIT.ordinalInt
         val command = Command.fromOrdinalInt(commandOrdinalInt)
+        Log.d(TAG, "onStartCommand $command")
 
         if (lastCommand[lastSource] != command) {
             when (command) {
@@ -155,8 +164,6 @@ class MediaService: Service() {
         sendBroadcast()
         return super.onStartCommand(intent, flags, startId)
     }
-
-
 
     override fun onBind(intent: Intent?): IBinder? {
         Log.d(TAG, "onBind $intent ${intent?.extras}")
@@ -529,6 +536,7 @@ class MediaService: Service() {
             return
         }
 
+        lastSource = Source.LOCAL
         lastStatus[Source.CAST] = Status.STOPPED
         lastCommand[Source.CAST] = Command.STOP
 
@@ -871,7 +879,7 @@ class MediaService: Service() {
         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(broadcast)
     }
 
-    private val eventListener: Player.EventListener by lazy {
+    private val castEventListener: Player.EventListener by lazy {
         object : Player.EventListener {
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters?) {
                 Log.d(CAST_TAG, "onPlaybackParametersChanged $playbackParameters")
@@ -942,12 +950,16 @@ class MediaService: Service() {
                 return@CastStateListener
             }
 
-            lastCastState = p0
-
             when (p0) {
                 CastState.NO_DEVICES_AVAILABLE -> { Log.d(CAST_TAG, "onCastStateChanged: NO_DEVICES_AVAILABLE") }
 
-                CastState.NOT_CONNECTED -> { Log.d(CAST_TAG, "onCastStateChanged: NOT_CONNECTED") }
+                CastState.NOT_CONNECTED -> {
+                    Log.d(CAST_TAG, "onCastStateChanged: NOT_CONNECTED")
+
+                    if (lastSource == Source.CAST && lastStatus[Source.CAST] != Status.STOPPED) {
+                        stopCastally()
+                    }
+                }
 
                 CastState.CONNECTING -> {
                     Log.d(CAST_TAG, "onCastStateChanged: CONNECTING")
@@ -966,6 +978,7 @@ class MediaService: Service() {
                 }
             }
 
+            lastCastState = p0
             sendBroadcast()
         }
     }
