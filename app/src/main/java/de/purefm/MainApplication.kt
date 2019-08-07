@@ -3,6 +3,7 @@ package de.purefm
 import android.app.Application
 import android.content.ComponentCallbacks
 import android.content.res.Configuration
+import android.os.StrictMode
 import android.util.Log
 import com.google.android.gms.cast.framework.CastContext
 
@@ -13,6 +14,17 @@ class MainApplication: Application() {
         super.onCreate()
         Log.d(TAG, "onCreate")
         CastContext.getSharedInstance(this)
+
+        StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder()
+            .detectAll()
+            .penaltyLog()
+            .build())
+
+        StrictMode.setVmPolicy(
+            StrictMode.VmPolicy.Builder()
+                .detectAll()
+                .penaltyLog()
+                .build())
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

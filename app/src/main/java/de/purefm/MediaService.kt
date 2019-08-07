@@ -12,7 +12,6 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.view.KeyEvent
-import android.view.ViewConfiguration
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.session.MediaButtonReceiver
@@ -51,7 +50,7 @@ const val CHANNEL_ID = "106.4"
 
 class MediaService: Service() {
     enum class Status(val ordinalInt: Int) {
-        STOPPED(0), STARTING(1), PLAYING(2);
+        STOPPED(0), STARTING(1), PLAYING(2), PAUSED(3);
     }
 
     enum class Source(val ordinalInt: Int) {
@@ -59,13 +58,14 @@ class MediaService: Service() {
     }
 
     enum class Command(val ordinalInt: Int) {
-        INIT(0), PLAY(1), STOP(2);
+        INIT(0), PLAY(1), STOP(2), PAUSE(3);
 
         companion object {
             fun fromOrdinalInt(ordinalInt: Int): Command = when (ordinalInt) {
                 INIT.ordinalInt -> INIT
                 PLAY.ordinalInt -> PLAY
                 STOP.ordinalInt -> STOP
+                PAUSE.ordinalInt -> PAUSE
                 else -> throw IllegalArgumentException()
             }
         }
@@ -89,6 +89,8 @@ class MediaService: Service() {
 
     private var lastTitle: String? = null
 
+    private var lastCastState: Int? = null
+
     private var mediaSession: MediaSessionCompat? = null
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,7 +104,7 @@ class MediaService: Service() {
 
         val simpleExoPlayer = ExoPlayerFactory.newSimpleInstance(this)
         simpleExoPlayer.playWhenReady = false
-        simpleExoPlayer.addAnalyticsListener(analyticsListener)
+        simpleExoPlayer.addAnalyticsListener(localAnalyticsListener)
         exoPlayer = simpleExoPlayer
 
         val player = CastPlayer(castContext)
@@ -143,12 +145,18 @@ class MediaService: Service() {
                     stopForeground(true)
                     setMediaSessionInactive()
                 }
+
+                Command.PAUSE -> {
+                    pause(lastSource)
+                }
             }
         }
 
         sendBroadcast()
         return super.onStartCommand(intent, flags, startId)
     }
+
+
 
     override fun onBind(intent: Intent?): IBinder? {
         Log.d(TAG, "onBind $intent ${intent?.extras}")
@@ -232,7 +240,6 @@ class MediaService: Service() {
 
                 when (keyEvent.keyCode) {
                     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-
                         return true
                     }
 
@@ -289,13 +296,11 @@ class MediaService: Service() {
             override fun onPlay() {
                 super.onPlay()
                 Log.d(MEDIA_BUTTON_TAG, "onPlay")
-                play(lastSource)
             }
 
             override fun onStop() {
                 super.onStop()
                 Log.d(MEDIA_BUTTON_TAG, "onStop")
-                stop(lastSource)
             }
 
             override fun onSkipToQueueItem(id: Long) {
@@ -417,10 +422,10 @@ class MediaService: Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = getString(R.string.notification_channel_name)
             val descriptionText = getString(R.string.notification_channel_description)
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val importance = NotificationManager.IMPORTANCE_LOW
             val notificationChannel = NotificationChannel(CHANNEL_ID, name, importance)
             notificationChannel.description = descriptionText
-            notificationChannel.vibrationPattern = null
+            notificationChannel.enableVibration(false)
             val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(notificationChannel)
         }
@@ -436,7 +441,7 @@ class MediaService: Service() {
 
         val notificationBuilder = androidx.core.app.NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle("pure-fm.de")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.cast_ic_notification_small_icon)
             .setContentIntent(pendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(
@@ -455,15 +460,29 @@ class MediaService: Service() {
             )
             .setStyle(mediaStyle)
 
-        lastTitle?.let { notificationBuilder.setContentText(it) }
 
+        lastTitle?.let { notificationBuilder.setContentText(it) }
         startForeground(1, notificationBuilder.build())
     }
 
     private fun play(source: Source) {
         when (source) {
-            Source.CAST -> playCastally()
-            Source.LOCAL -> playLocally()
+            Source.CAST -> {
+                stopLocally()
+                playCastally()
+            }
+
+            Source.LOCAL -> {
+                stopCastally()
+                playLocally()
+            }
+        }
+    }
+
+    private fun pause(source: Source) {
+        when (source) {
+            Source.CAST -> pauseCastally()
+            Source.LOCAL -> pauseLocally()
         }
     }
 
@@ -489,6 +508,19 @@ class MediaService: Service() {
             }
 
             setSessionAvailabilityListener(sessionAvailabilityListener)
+        }
+    }
+
+    private fun pauseCastally() {
+        if (lastStatus[Source.CAST] == Status.PAUSED) {
+            return
+        }
+
+        lastStatus[Source.CAST] = Status.PAUSED
+        lastCommand[Source.CAST] = Command.PAUSE
+
+        castPlayer?.apply {
+            // ????
         }
     }
 
@@ -524,6 +556,19 @@ class MediaService: Service() {
         }
     }
 
+    private fun pauseLocally() {
+        if (lastStatus[Source.LOCAL] == Status.PAUSED) {
+            return
+        }
+
+        lastStatus[Source.LOCAL] = Status.PAUSED
+        lastCommand[Source.LOCAL] = Command.PAUSE
+
+        exoPlayer?.apply {
+            // ???
+        }
+    }
+
     private fun stopLocally() {
         if (lastStatus[Source.LOCAL] == Status.STOPPED) {
             return
@@ -552,14 +597,14 @@ class MediaService: Service() {
         mediaMetadata.putString(MediaMetadata.KEY_TITLE, "pure-fm.de")
 
         val mediaInfo: MediaInfo = MediaInfo.Builder(url)
-            .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+            .setStreamType(MediaInfo.STREAM_TYPE_LIVE)
             .setContentType(MimeTypes.AUDIO_MPEG)
             .setMetadata(mediaMetadata).build()
 
         return MediaQueueItem.Builder(mediaInfo).build()
     }
 
-    private val analyticsListener: AnalyticsListener by lazy {
+    private val localAnalyticsListener: AnalyticsListener by lazy {
         object : AnalyticsListener {
             override fun onSeekProcessed(eventTime: AnalyticsListener.EventTime?) {
                 Log.w(LOCAL_TAG, "onSeekProcessed")
@@ -822,6 +867,7 @@ class MediaService: Service() {
         broadcast.putExtra("source", lastSource.ordinalInt)
         broadcast.putExtra("command", lastCommand[lastSource]?.ordinalInt)
         broadcast.putExtra("title", lastTitle)
+        broadcast.putExtra("castState", lastCastState)
         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(broadcast)
     }
 
@@ -892,12 +938,35 @@ class MediaService: Service() {
 
     private val casteStateListener: CastStateListener by lazy {
         CastStateListener { p0 ->
-            when (p0) {
-                CastState.NO_DEVICES_AVAILABLE -> Log.d(CAST_TAG, "onCastStateChanged: NO_DEVICES_AVAILABLE")
-                CastState.NOT_CONNECTED -> Log.d(CAST_TAG, "onCastStateChanged: NOT_CONNECTED")
-                CastState.CONNECTING -> Log.d(CAST_TAG, "onCastStateChanged: CONNECTING")
-                CastState.CONNECTED -> Log.d(CAST_TAG, "onCastStateChanged: CONNECTED")
+            if (lastCastState == p0 ) {
+                return@CastStateListener
             }
+
+            lastCastState = p0
+
+            when (p0) {
+                CastState.NO_DEVICES_AVAILABLE -> { Log.d(CAST_TAG, "onCastStateChanged: NO_DEVICES_AVAILABLE") }
+
+                CastState.NOT_CONNECTED -> { Log.d(CAST_TAG, "onCastStateChanged: NOT_CONNECTED") }
+
+                CastState.CONNECTING -> {
+                    Log.d(CAST_TAG, "onCastStateChanged: CONNECTING")
+
+                    if (lastSource != Source.CAST) {
+                        lastSource = Source.CAST
+                    }
+                }
+
+                CastState.CONNECTED -> {
+                    Log.d(CAST_TAG, "onCastStateChanged: CONNECTED")
+
+                    if (lastSource != Source.CAST) {
+                        lastSource = Source.CAST
+                    }
+                }
+            }
+
+            sendBroadcast()
         }
     }
 }

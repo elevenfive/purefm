@@ -10,6 +10,7 @@ import android.view.Menu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.framework.CastState
 import kotlinx.android.synthetic.main.activity_main.*
 
 private const val TAG = "MainActivity"
@@ -86,7 +87,11 @@ class MainActivity : AppCompatActivity() {
     private fun onReceive(p1: Intent) {
         Log.d(TAG, "onReceive $p1 ${p1.extras}")
 
-        when (p1.getIntExtra("status", -1)) {
+        val status = p1.getIntExtra("status", -1)
+        val castState = p1.getIntExtra("castState", -1)
+        button.isEnabled = status != MediaService.Status.STARTING.ordinalInt && castState != CastState.CONNECTING
+
+        when (status) {
             MediaService.Status.PLAYING.ordinalInt -> {
                 button.isSelected = true
                 track_title_text_view.text = p1.getStringExtra("title")
