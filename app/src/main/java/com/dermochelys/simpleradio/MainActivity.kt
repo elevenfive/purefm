@@ -1,4 +1,4 @@
-package de.purefm
+package com.dermochelys.simpleradio
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -11,7 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastState
-import de.purefm.MediaService.Command.INIT
+import com.dermochelys.simpleradio.MediaService.Command.INIT
 import kotlinx.android.synthetic.main.activity_main.*
 
 private const val TAG = "MainActivity"

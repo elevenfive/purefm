@@ -1,9 +1,10 @@
-package de.purefm
+package com.dermochelys.simpleradio
 
 import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,7 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.view.KeyEvent
+import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.session.MediaButtonReceiver
@@ -456,9 +458,16 @@ class MediaService: Service() {
             .setShowActionsInCompactView(0)
             .setShowCancelButton(false)
 
+        @DrawableRes
+        val smallIconResId: Int = when(lastSource) {
+            Source.CAST -> R.drawable.cast_ic_notification_small_icon
+            else -> R.drawable.ic_notification
+        }
+
         val notificationBuilder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle("pure-fm.de")
-            .setSmallIcon(R.drawable.cast_ic_notification_small_icon)
+            .setSmallIcon(smallIconResId)
+            .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.pure_fm_notification))
             .setContentIntent(pendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setStyle(mediaStyle)
@@ -802,6 +811,7 @@ class MediaService: Service() {
                 Log.d(LOCAL_TAG, "onMetadata title=$title")
                 lastTitle = title
                 sendBroadcast()
+                startForeground()
             }
         }
     }

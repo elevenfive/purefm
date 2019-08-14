@@ -1,4 +1,4 @@
-package de.purefm
+package com.dermochelys.simpleradio
 
 import android.app.Application
 import android.content.ComponentCallbacks

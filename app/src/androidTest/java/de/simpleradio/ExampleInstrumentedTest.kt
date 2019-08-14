@@ -1,4 +1,4 @@
-package de.purefm
+package de.simpleradio
 
 import androidx.test.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4

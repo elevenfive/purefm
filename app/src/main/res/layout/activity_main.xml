@@ -32,7 +32,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:maxHeight="150dp"
-            android:src="@drawable/hg_berlin_1"
+            android:src="@drawable/pure_fm"
             android:scaleType="centerInside"
             app:layout_constraintTop_toTopOf="parent"
             tools:ignore="ContentDescription"/>

@@ -1,4 +1,4 @@
-package de.purefm
+package de.simpleradio
 
 import org.junit.Test
 
