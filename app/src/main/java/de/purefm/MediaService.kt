@@ -5,7 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
-import android.os.*
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import android.os.ResultReceiver
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.RatingCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -18,7 +21,6 @@ import androidx.media.session.MediaButtonReceiver
 import com.google.android.exoplayer2.*
 import com.google.android.exoplayer2.analytics.AnalyticsListener
 import com.google.android.exoplayer2.audio.AudioAttributes
-import com.google.android.exoplayer2.audio.AudioListener
 import com.google.android.exoplayer2.ext.cast.CastPlayer
 import com.google.android.exoplayer2.ext.cast.SessionAvailabilityListener
 import com.google.android.exoplayer2.metadata.Metadata
@@ -34,11 +36,13 @@ import com.google.android.exoplayer2.util.Util
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaMetadata
 import com.google.android.gms.cast.MediaQueueItem
-import com.google.android.gms.cast.framework.*
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastState
+import com.google.android.gms.cast.framework.CastStateListener
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import java.io.FileDescriptor
 import java.io.IOException
 import java.io.PrintWriter
-import java.lang.StringBuilder
 
 const val CAST_TAG =  "cast"
 const val LOCAL_TAG = "local"
@@ -70,7 +74,7 @@ class MediaService: Service() {
         }
     }
 
-    private lateinit var castContext: CastContext
+    private var castContext: CastContext? = null
 
     private var castPlayer: CastPlayer? = null
 
@@ -98,19 +102,27 @@ class MediaService: Service() {
         super.onCreate()
 
         Log.d(TAG, "onCreate")
-        castContext = CastContext.getSharedInstance(applicationContext)
-        castContext.addCastStateListener(casteStateListener)
 
         val simpleExoPlayer = ExoPlayerFactory.newSimpleInstance(this)
         simpleExoPlayer.playWhenReady = false
         simpleExoPlayer.addAnalyticsListener(localAnalyticsListener)
         exoPlayer = simpleExoPlayer
 
+        val sharedCastContext = CastContext.getSharedInstance(applicationContext)
+        sharedCastContext.addCastStateListener(casteStateListener)
+
+        sharedCastContext.sessionManager.currentCastSession?.remoteMediaClient?.registerCallback(remoteMediaClientCallback) ?: Log.d(
+            CAST_TAG, "failed to register remoteMediaClientCallback")
+
+        castContext = sharedCastContext
+
         val player = CastPlayer(castContext)
         player.playWhenReady = false
+
+
+
         player.addListener(castEventListener)
         castPlayer = player
-        castContext.sessionManager.addSessionManagerListener(sessionManagerListener)
 
         val mediaSessionCompat = MediaSessionCompat(applicationContext, "MediaSessionCompat")
         mediaSessionCompat.setCallback(mediaSessionCallback)
@@ -230,66 +242,20 @@ class MediaService: Service() {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    private val sessionManagerListener: SessionManagerListener<Session> by lazy {
-        object : SessionManagerListener<Session> {
-            override fun onSessionStarted(p0: Session?,
-                                          p1: String?) {
+    private val remoteMediaClientCallback: RemoteMediaClient.Callback by lazy {
+        object : RemoteMediaClient.Callback() {
+            override fun onMetadataUpdated() {
+                Log.d(CAST_TAG, "onMetadataUpdated")
 
-            }
+                val remoteMediaClient = castContext?.sessionManager?.currentCastSession?.remoteMediaClient ?: let {
+                    Log.d(CAST_TAG, "couldn't get remote media client")
+                    return
+                }
 
-            override fun onSessionResumeFailed(p0: Session?,
-                                               p1: Int) {
-
-            }
-
-            override fun onSessionSuspended(p0: Session?,
-                                            p1: Int) {
-
-            }
-
-            override fun onSessionEnded(p0: Session?,
-                                        p1: Int) {
-
-            }
-
-            override fun onSessionResumed(p0: Session?,
-                                          p1: Boolean) {
-
-            }
-
-            override fun onSessionStarting(p0: Session?) {
-
-            }
-
-            override fun onSessionResuming(p0: Session?,
-                                           p1: String?) {
-
-            }
-
-            override fun onSessionEnding(p0: Session?) {
-
-            }
-
-            override fun onSessionStartFailed(p0: Session?,
-                                              p1: Int) {
-
-            }
-
-        }
-    }
-
-    private val audioListener: AudioListener by lazy {
-        object : AudioListener {
-            override fun onAudioAttributesChanged(audioAttributes: AudioAttributes?) {
-                Log.d(CAST_TAG, "onAudioAttributesChanged: $audioAttributes")
-            }
-
-            override fun onVolumeChanged(volume: Float) {
-                Log.d(CAST_TAG, "onVolumeChanged: $volume")
-            }
-
-            override fun onAudioSessionId(audioSessionId: Int) {
-                Log.d(CAST_TAG, "onAudioSessionId: $audioSessionId")
+                val infoName = remoteMediaClient.mediaInfo.mediaTracks?.get(0)?.name
+                Log.d(CAST_TAG, "info name: $infoName")
+                val statusName = remoteMediaClient.mediaStatus?.queueData?.name
+                Log.d(CAST_TAG, "status name: $statusName")
             }
         }
     }
@@ -312,12 +278,9 @@ class MediaService: Service() {
                 }
 
                 when (keyEvent.keyCode) {
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                        return true
-                    }
-
                     KeyEvent.KEYCODE_MEDIA_STOP -> {
                         onStop()
+                        return true
                     }
                 }
 
@@ -325,143 +288,118 @@ class MediaService: Service() {
             }
 
             override fun onRewind() {
-                super.onRewind()
                 Log.d(MEDIA_BUTTON_TAG, "onRewind")
             }
 
             override fun onSeekTo(pos: Long) {
-                super.onSeekTo(pos)
                 Log.d(MEDIA_BUTTON_TAG, "onSeekTo $pos")
             }
 
             override fun onAddQueueItem(description: MediaDescriptionCompat?) {
-                super.onAddQueueItem(description)
                 Log.d(MEDIA_BUTTON_TAG, "onAddQueueItem $description")
             }
 
             override fun onAddQueueItem(description: MediaDescriptionCompat?,
                                         index: Int) {
-                super.onAddQueueItem(description, index)
                 Log.d(MEDIA_BUTTON_TAG, "onAddQueueItem $description $index")
             }
 
             override fun onSkipToPrevious() {
-                super.onSkipToPrevious()
                 Log.d(MEDIA_BUTTON_TAG, "onSkipToPrevious")
             }
 
             override fun onCustomAction(action: String?,
                                         extras: Bundle?) {
-                super.onCustomAction(action, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onCustomAction $action $extras")
             }
 
             override fun onPrepare() {
-                super.onPrepare()
                 Log.d(MEDIA_BUTTON_TAG, "onPrepare")
             }
 
             override fun onFastForward() {
-                super.onFastForward()
                 Log.d(MEDIA_BUTTON_TAG, "onFastForward")
             }
 
             override fun onPlay() {
-                super.onPlay()
                 Log.d(MEDIA_BUTTON_TAG, "onPlay")
             }
 
             override fun onStop() {
-                super.onStop()
                 Log.d(MEDIA_BUTTON_TAG, "onStop")
+                stop(lastSource)
             }
 
             override fun onSkipToQueueItem(id: Long) {
-                super.onSkipToQueueItem(id)
                 Log.d(MEDIA_BUTTON_TAG, "onSkipToQueueItem $id")
             }
 
             override fun onRemoveQueueItem(description: MediaDescriptionCompat?) {
-                super.onRemoveQueueItem(description)
                 Log.d(MEDIA_BUTTON_TAG, "onRemoveQueueItem $description")
             }
 
             override fun onSkipToNext() {
-                super.onSkipToNext()
                 Log.d(MEDIA_BUTTON_TAG, "onSkipToNext")
             }
 
             override fun onPrepareFromMediaId(mediaId: String?,
                                               extras: Bundle?) {
-                super.onPrepareFromMediaId(mediaId, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onPrepareFromMediaId $mediaId $extras")
             }
 
             override fun onSetRepeatMode(repeatMode: Int) {
-                super.onSetRepeatMode(repeatMode)
                 Log.d(MEDIA_BUTTON_TAG, "onSetRepeatMode $repeatMode")
             }
 
             override fun onCommand(command: String?,
                                    extras: Bundle?,
                                    cb: ResultReceiver?) {
-                super.onCommand(command, extras, cb)
                 Log.d(MEDIA_BUTTON_TAG, "onCommand $command $extras $cb")
             }
 
             override fun onPause() {
                 Log.d(MEDIA_BUTTON_TAG, "onPause")
-                super.onPause()
             }
 
             override fun onPrepareFromSearch(query: String?,
                                              extras: Bundle?) {
-                super.onPrepareFromSearch(query, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onPrepareFromSearch $query $extras")
             }
 
             override fun onPlayFromMediaId(mediaId: String?,
                                            extras: Bundle?) {
-                super.onPlayFromMediaId(mediaId, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onPlayFromMediaId $mediaId $extras")
             }
 
             override fun onSetShuffleMode(shuffleMode: Int) {
-                super.onSetShuffleMode(shuffleMode)
                 Log.d(MEDIA_BUTTON_TAG, "onSetShuffleMode $shuffleMode")
             }
 
             override fun onPrepareFromUri(uri: Uri?,
                                           extras: Bundle?) {
-                super.onPrepareFromUri(uri, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onPrepareFromUri $uri $extras")
             }
 
             override fun onPlayFromSearch(query: String?,
                                           extras: Bundle?) {
-                super.onPlayFromSearch(query, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onPlayFromSearch $query $extras")
             }
 
             override fun onPlayFromUri(uri: Uri?,
                                        extras: Bundle?) {
-                super.onPlayFromUri(uri, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onPlayFromUri $uri $extras")
             }
 
             override fun onSetRating(rating: RatingCompat?) {
-                super.onSetRating(rating)
                 Log.d(MEDIA_BUTTON_TAG, "onSetRating $rating")
             }
 
             override fun onSetRating(rating: RatingCompat?,
                                      extras: Bundle?) {
-                super.onSetRating(rating, extras)
                 Log.d(MEDIA_BUTTON_TAG, "onSetRating $rating $extras")
             }
 
             override fun onSetCaptioningEnabled(enabled: Boolean) {
-                super.onSetCaptioningEnabled(enabled)
                 Log.d(MEDIA_BUTTON_TAG, "onSetCaptioningEnabled $enabled")
             }
         }
@@ -528,7 +466,7 @@ class MediaService: Service() {
 
         notificationBuilder.addAction(
             NotificationCompat.Action(
-                R.drawable.exo_icon_stop, "stop",
+                R.drawable.ic_stop, "stop",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                     applicationContext, PlaybackStateCompat.ACTION_STOP
                 )
