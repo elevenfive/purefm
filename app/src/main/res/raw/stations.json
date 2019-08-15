@@ -1,0 +1,104 @@
+{
+  "stations": [
+    {
+      "country_code": "de",
+      "city_name": "Berlin",
+      "band": "fm",
+      "frequency": "106.4",
+      "name": "Pure FM",
+      "url_stream": "http://radionetz.de:8000/purefm-bln.mp3",
+      "url_logo": "http://www.pure-fm.de/wp-content/uploads/purefm-head-hp-01-berlin-2017.jpg",
+      "url_site": "http://pure-fm.de/"
+    },
+    {
+      "country_code": "de",
+      "city_name": "Berlin",
+      "band": "fm",
+      "frequency": "95.8",
+      "name": "Radio Eins",
+      "url_stream": "https://rbb-dg-rbb-https-fra-dtag-cdn.sslcast.addradio.de/rbb/radioeins/live/mp3/128/stream.mp3",
+      "url_logo": "https://www.radioeins.de/content/dam/rbb/rad/layout/radioeins_logo.png.png/img.png",
+      "url_site": "https://www.radioeins.de/"
+    },
+    {
+      "country_code": "us",
+      "city_name": "Berkeley",
+      "band": "fm",
+      "frequency": "94.1",
+      "name": "KPFA",
+      "url_stream": "http://streams.kpfa.org:8000/kpfa",
+      "url_logo": "https://kpfa.org/wp-content/themes/kpfa-v2/dist/images/KPFA70thLogo.png",
+      "url_site": "https://kpfa.org/"
+    },
+    {
+      "country_code": "us",
+      "city_name": "Seattle",
+      "band": "fm",
+      "frequency": "95.8",
+      "name": "KEXP",
+      "url_stream": "https://kexp-mp3-128.streamguys1.com/kexp128.mp3",
+      "url_logo": "https://www.kexp.org/static/assets/img/logo-black.svg",
+      "url_site": "https://www.kexp.org/"
+    },
+    {
+      "country_code": "us",
+      "city_name": "New York",
+      "band": "fm",
+      "frequency": "93.9",
+      "name": "WNYC",
+      "url_stream": "https://fm939.wnyc.org/wnycfm-web",
+      "url_logo": "https://brandbook.wnyc.org/s/WNYC_NoFreq_Black_RGB.svg",
+      "url_site": "https://www.wnyc.org/"
+    },
+    {
+      "country_code": "us",
+      "city_name": "Chicago",
+      "band": "fm",
+      "frequency": "91.5",
+      "name": "WBEZ",
+      "url_stream": "http://stream.wbez.org/wbez128.mp3",
+      "url_logo": "http://www.wbez.org/img/social_default.png",
+      "url_site": "https://www.wbez.org/"
+    },
+    {
+      "country_code": "fr",
+      "city_name": "Paris",
+      "band": "fm",
+      "frequency": "98.2",
+      "name": "Radio FG",
+      "url_stream": "http://radiofg.impek.com/fg.mp3",
+      "url_logo": "https://www.radiofg.com/upload/footer/5c2f8f6fc7d772.80560097.png",
+      "url_site": "https://www.radiofg.com/"
+    },
+    {
+      "country_code": "uk",
+      "city_name": "London",
+      "band": "fm",
+      "frequency": "106.8",
+      "name": "Rinse FM",
+      "url_stream": "http://206.189.117.157:8000/stream",
+      "url_logo": "https://rinse.fm/wp-content/themes/rp/images/rinse-fb-og-img.png",
+      "url_site": "https://rinse.fm/"
+    },
+    {
+      "country_code": "pl",
+      "city_name": "Warsawa",
+      "band": "fm",
+      "frequency": "91.0",
+      "name": "RMF",
+      "url_stream": "http://80.48.65.99/RMFFM48?rmf_disable_preroll=true",
+      "url_logo": "https://www.rmf.fm/2018/img/logo-x2-white.png",
+      "url_site": "https://www.rmf.fm/"
+    },
+    {
+      "country_code": "pl",
+      "city_name": "Warsawa",
+      "band": "fm",
+      "frequency": "107.5",
+      "name": "Radio ZET",
+      "url_stream": "https://n-4-14.dcs.redcdn.pl/sc/o2/Eurozet/live/audio.livx?audio=5",
+      "url_logo": "https://gfx.radiozet.pl/extension/radiozet/design/standard/images/layout/logo-zet.svg",
+      "url_site": "https://www.radiozet.pl/"
+    }
+  ]
+}

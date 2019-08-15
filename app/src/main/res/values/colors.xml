@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#aa1818</color>
-    <color name="colorPrimaryDark">#7f180f</color>
-    <color name="colorAccent">#ae1915</color>
     <color name="colorDermochelys">#2E8FF2</color>
+    <color name="colorPrimary">@color/colorDermochelys</color>
+    <color name="colorPrimaryDark">#0062bf</color>
+    <color name="colorAccent">#74bfff</color>
 </resources>

@@ -9,14 +9,6 @@
         tools:context=".MainActivity">
 
     <ImageView
-            android:id="@+id/claim"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:src="@drawable/claim"
-            app:layout_constraintBottom_toBottomOf="parent"
-            tools:ignore="ContentDescription"/>
-
-    <ImageView
             android:id="@+id/button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -24,17 +16,17 @@
             android:minHeight="200dp"
             android:src="@drawable/media_control_button"
             android:tint="@android:color/white"
-            app:layout_constraintTop_toBottomOf="@id/logo"
+            app:layout_constraintTop_toBottomOf="@+id/logo"
+            app:layout_constraintBottom_toBottomOf="parent"
             tools:ignore="ContentDescription"/>
 
     <ImageView
             android:id="@+id/logo"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:maxHeight="150dp"
-            android:src="@drawable/pure_fm"
+            android:layout_height="150dp"
             android:scaleType="centerInside"
             app:layout_constraintTop_toTopOf="parent"
+            tools:src="@android:drawable/btn_star"
             tools:ignore="ContentDescription"/>
 
     <TextView
@@ -45,6 +37,7 @@
             android:background="@android:color/black"
             android:textSize="24sp"
             android:gravity="center"
-            app:layout_constraintTop_toBottomOf="@id/logo"
-            tools:text="Now on air: Foo by Bar"/>
+            app:layout_constraintTop_toBottomOf="@+id/logo"
+            app:layout_constraintBottom_toTopOf="@+id/button"
+            tools:text="@string/now_on_air" />
 </androidx.constraintlayout.widget.ConstraintLayout>

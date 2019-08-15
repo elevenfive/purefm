@@ -4,7 +4,6 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -112,17 +111,10 @@ class MediaService: Service() {
 
         val sharedCastContext = CastContext.getSharedInstance(applicationContext)
         sharedCastContext.addCastStateListener(casteStateListener)
-
-        sharedCastContext.sessionManager.currentCastSession?.remoteMediaClient?.registerCallback(remoteMediaClientCallback) ?: Log.d(
-            CAST_TAG, "failed to register remoteMediaClientCallback")
-
         castContext = sharedCastContext
 
         val player = CastPlayer(castContext)
         player.playWhenReady = false
-
-
-
         player.addListener(castEventListener)
         castPlayer = player
 
@@ -159,7 +151,6 @@ class MediaService: Service() {
 
                 Command.PLAY -> {
                     play(lastSource)
-                    startForeground()
                     setMediaSessionActive()
                 }
 
@@ -246,6 +237,26 @@ class MediaService: Service() {
 
     private val remoteMediaClientCallback: RemoteMediaClient.Callback by lazy {
         object : RemoteMediaClient.Callback() {
+            override fun onPreloadStatusUpdated() {
+                Log.d(CAST_TAG, "onPreloadStatusUpdated")
+            }
+
+            override fun onSendingRemoteMediaRequest() {
+                Log.d(CAST_TAG, "onSendingRemoteMediaRequest")
+            }
+
+            override fun onAdBreakStatusUpdated() {
+                Log.d(CAST_TAG, "onAdBreakStatusUpdated")
+            }
+
+            override fun onStatusUpdated() {
+                Log.d(CAST_TAG, "onStatusUpdated")
+            }
+
+            override fun onQueueStatusUpdated() {
+                Log.d(CAST_TAG, "onQueueStatusUpdated")
+            }
+
             override fun onMetadataUpdated() {
                 Log.d(CAST_TAG, "onMetadataUpdated")
 
@@ -411,6 +422,10 @@ class MediaService: Service() {
         object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
                 Log.d(CAST_TAG, "onCastSessionAvailable")
+
+                val remoteMediaClient = castContext?.sessionManager?.currentCastSession?.remoteMediaClient
+                remoteMediaClient?.registerCallback(remoteMediaClientCallback) ?: Log.d(CAST_TAG, "failed to register remoteMediaClientCallback")
+
                 loadItem()
             }
 
@@ -467,7 +482,7 @@ class MediaService: Service() {
         val notificationBuilder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle("pure-fm.de")
             .setSmallIcon(smallIconResId)
-            .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.pure_fm_notification))
+            //.setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.pure_fm_notification))
             .setContentIntent(pendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setStyle(mediaStyle)
@@ -512,23 +527,29 @@ class MediaService: Service() {
             return
         }
 
+        Log.d(CAST_TAG, "playCastally")
+
         lastSource = Source.CAST
         lastStatus[Source.CAST] = Status.STARTING
         lastCommand[Source.CAST] = Command.PLAY
 
         castPlayer?.apply {
+            startForeground()
+
             if (isCastSessionAvailable) {
                 loadItem()
             }
 
             setSessionAvailabilityListener(castSessionAvailabilityListener)
-        }
+        } ?: Log.d(CAST_TAG, "playCastally: no cast player")
     }
 
     private fun stopCastally() {
         if (lastStatus[Source.CAST] == Status.STOPPED) {
             return
         }
+
+        Log.d(CAST_TAG, "stopCastally")
 
         lastStatus[Source.CAST] = Status.STOPPED
         lastCommand[Source.CAST] = Command.STOP
@@ -547,11 +568,14 @@ class MediaService: Service() {
             return
         }
 
+        Log.d(CAST_TAG, "playLocally")
+
         lastSource = Source.LOCAL
         lastStatus[Source.LOCAL] = Status.STARTING
         lastCommand[Source.LOCAL] = Command.PLAY
 
         exoPlayer?.apply {
+            startForeground()
             playWhenReady = true
             prepare(progressiveMediaSource())
         }
@@ -561,6 +585,8 @@ class MediaService: Service() {
         if (lastStatus[Source.LOCAL] == Status.STOPPED) {
             return
         }
+
+        Log.d(CAST_TAG, "stopLocally")
 
         lastStatus[Source.LOCAL] = Status.STOPPED
         lastCommand[Source.LOCAL] = Command.STOP
@@ -818,9 +844,14 @@ class MediaService: Service() {
 
     private fun handleStateChange(source: Source,
                                   playbackState: Int) {
+        val tag = when (source) {
+            Source.LOCAL -> LOCAL_TAG
+            Source.CAST -> CAST_TAG
+        }
+
         when (playbackState) {
             Player.STATE_IDLE -> {
-                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_IDLE")
+                Log.d(tag, "onPlayerStateChanged STATE_IDLE")
 
                 if (lastStatus[source] != Status.STOPPED) {
                     lastStatus[source] = Status.STOPPED
@@ -829,7 +860,7 @@ class MediaService: Service() {
             }
 
             Player.STATE_BUFFERING -> {
-                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_BUFFERING")
+                Log.d(tag, "onPlayerStateChanged STATE_BUFFERING")
 
                 if (lastStatus[source] != Status.STARTING) {
                     lastStatus[source] = Status.STARTING
@@ -838,7 +869,7 @@ class MediaService: Service() {
             }
 
             Player.STATE_READY -> {
-                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_READY")
+                Log.d(tag, "onPlayerStateChanged STATE_READY")
 
                 if (lastStatus[source] != Status.PLAYING) {
                     lastStatus[source] = Status.PLAYING
@@ -847,7 +878,7 @@ class MediaService: Service() {
             }
 
             Player.STATE_ENDED -> {
-                Log.d(LOCAL_TAG, "onPlayerStateChanged STATE_ENDED")
+                Log.d(tag, "onPlayerStateChanged STATE_ENDED")
 
                 if (lastStatus[source] != Status.STOPPED) {
                     lastStatus[source] = Status.STOPPED
@@ -857,6 +888,7 @@ class MediaService: Service() {
 
             else -> return
         }
+
     }
 
     private fun sendBroadcast() {
@@ -872,7 +904,7 @@ class MediaService: Service() {
     private val castEventListener: Player.EventListener by lazy {
         object : Player.EventListener {
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters?) {
-                Log.d(CAST_TAG, "onPlaybackParametersChanged $playbackParameters")
+                Log.d(CAST_TAG, "onPlaybackParametersChanged playbackParameters=$playbackParameters")
             }
 
             override fun onSeekProcessed() {
@@ -891,15 +923,15 @@ class MediaService: Service() {
             }
 
             override fun onLoadingChanged(isLoading: Boolean) {
-                Log.d(CAST_TAG, "onLoadingChanged $isLoading")
+                Log.d(CAST_TAG, "onLoadingChanged isLoading=$isLoading")
             }
 
             override fun onPositionDiscontinuity(reason: Int) {
-                Log.d(CAST_TAG, "onPositionDiscontinuity $reason")
+                Log.d(CAST_TAG, "onPositionDiscontinuity reason=$reason")
             }
 
             override fun onRepeatModeChanged(repeatMode: Int) {
-                Log.d(CAST_TAG, "onRepeatModeChanged $repeatMode")
+                Log.d(CAST_TAG, "onRepeatModeChanged repeatMode=$repeatMode")
             }
 
             override fun onTimelineChanged(
