@@ -2,7 +2,8 @@
 <manifest
         xmlns:android="http://schemas.android.com/apk/res/android"
         xmlns:dist="http://schemas.android.com/apk/distribution"
-        xmlns:tools="http://schemas.android.com/tools" package="com.dermochelys.simpleradio">
+        xmlns:tools="http://schemas.android.com/tools"
+        package="com.dermochelys.simpleradio">
 
     <dist:module dist:instant="true"/>
 
@@ -22,29 +23,33 @@
 
         <activity
                 android:name=".MainActivity"
-                android:launchMode="singleTop">
+                android:launchMode="singleInstance">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action
+                        android:name="android.intent.action.MAIN"/>
+
+                <category
+                        android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
 
         <meta-data
                 android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-                android:value="com.google.android.exoplayer2.ext.cast.DefaultCastOptionsProvider" />
+                android:value="com.dermochelys.simpleradio.CastOptionsProvider" />
 
         <service
                 android:name=".MediaService"
                 android:exported="false">
             <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
+                <action
+                        android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </service>
 
-        <receiver android:name="androidx.media.session.MediaButtonReceiver" >
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
+        <receiver
+                android:name=".MediaIntentReceiver"
+                android:exported="false"
+                android:enabled="true"/>
+
     </application>
 </manifest>

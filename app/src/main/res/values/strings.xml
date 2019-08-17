@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name">Simple Radio</string>
     <string name="now_on_air">Now On Air: %s \n (Since %s)</string>
+
+    <string name="receiver_app_id" translatable="false">8AA2109C</string>
+
     <string name="media_route_menu_title" translatable="false">Media Route Menu Title</string>
     <string name="notification_channel_name" translatable="false">Background Playback</string>
     <string name="notification_channel_description" translatable="false">Enables the app to play music while you use other apps, and with the display off.</string>

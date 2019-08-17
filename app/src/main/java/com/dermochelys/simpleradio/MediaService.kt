@@ -25,7 +25,6 @@ import com.google.android.exoplayer2.audio.AudioAttributes
 import com.google.android.exoplayer2.ext.cast.CastPlayer
 import com.google.android.exoplayer2.ext.cast.SessionAvailabilityListener
 import com.google.android.exoplayer2.metadata.Metadata
-import com.google.android.exoplayer2.metadata.MetadataOutput
 import com.google.android.exoplayer2.metadata.icy.IcyInfo
 import com.google.android.exoplayer2.source.MediaSourceEventListener
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
@@ -34,16 +33,13 @@ import com.google.android.exoplayer2.trackselection.TrackSelectionArray
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory
 import com.google.android.exoplayer2.util.MimeTypes
 import com.google.android.exoplayer2.util.Util
-import com.google.android.gms.cast.MediaInfo
-import com.google.android.gms.cast.MediaMetadata
-import com.google.android.gms.cast.MediaQueueItem
-import com.google.android.gms.cast.framework.CastContext
-import com.google.android.gms.cast.framework.CastState
-import com.google.android.gms.cast.framework.CastStateListener
+import com.google.android.gms.cast.*
+import com.google.android.gms.cast.framework.*
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import java.io.FileDescriptor
 import java.io.IOException
 import java.io.PrintWriter
+import java.util.concurrent.TimeUnit
 
 const val CAST_TAG =  "cast"
 const val LOCAL_TAG = "local"
@@ -111,11 +107,13 @@ class MediaService: Service() {
 
         val sharedCastContext = CastContext.getSharedInstance(applicationContext)
         sharedCastContext.addCastStateListener(casteStateListener)
+        sharedCastContext.sessionManager.addSessionManagerListener(sessionManagerListener)
         castContext = sharedCastContext
 
         val player = CastPlayer(castContext)
         player.playWhenReady = false
         player.addListener(castEventListener)
+        player.metadataComponent
         castPlayer = player
 
         val mediaSessionCompat = MediaSessionCompat(applicationContext, "MediaSessionCompat")
@@ -133,6 +131,8 @@ class MediaService: Service() {
                 val keyName = when (keyEvent.keyCode) {
                     KeyEvent.KEYCODE_MEDIA_PLAY -> "play"
                     KeyEvent.KEYCODE_MEDIA_STOP -> "stop"
+                    KeyEvent.KEYCODE_VOLUME_DOWN -> "volume_down"
+                    KeyEvent.KEYCODE_VOLUME_UP -> "volume_up"
                     else -> "unknown"
                 }
 
@@ -212,6 +212,8 @@ class MediaService: Service() {
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
 
+        castContext?.sessionManager?.removeSessionManagerListener(sessionManagerListener)
+
         castPlayer?.let {
             it.stop()
             it.release()
@@ -234,6 +236,53 @@ class MediaService: Service() {
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    private val sessionManagerListener: SessionManagerListener<Session> by lazy {
+        object : SessionManagerListener<Session> {
+            override fun onSessionStarted(p0: Session?,
+                                          p1: String?) {
+                Log.d(CAST_TAG, "onSessionStarted $p1")
+            }
+
+            override fun onSessionResumeFailed(p0: Session?,
+                                               p1: Int) {
+                Log.d(CAST_TAG, "onSessionResumeFailed $p1")
+            }
+
+            override fun onSessionSuspended(p0: Session?,
+                                            p1: Int) {
+                Log.d(CAST_TAG, "onSessionSuspended $p1")
+            }
+
+            override fun onSessionEnded(p0: Session?,
+                                        p1: Int) {
+                Log.d(CAST_TAG, "onSessionEnded $p1")
+            }
+
+            override fun onSessionResumed(p0: Session?,
+                                          p1: Boolean) {
+                Log.d(CAST_TAG, "onSessionResumed $p1")
+            }
+
+            override fun onSessionStarting(p0: Session?) {
+                Log.d(CAST_TAG, "onSessionStarting")
+            }
+
+            override fun onSessionResuming(p0: Session?,
+                                           p1: String?) {
+                Log.d(CAST_TAG, "onSessionResuming $p1")
+            }
+
+            override fun onSessionEnding(p0: Session?) {
+                Log.d(CAST_TAG, "onSessionEnding")
+            }
+
+            override fun onSessionStartFailed(p0: Session?,
+                                              p1: Int) {
+                Log.d(CAST_TAG, "onSessionStartFailed $p1")
+            }
+        }
+    }
 
     private val remoteMediaClientCallback: RemoteMediaClient.Callback by lazy {
         object : RemoteMediaClient.Callback() {
@@ -265,7 +314,7 @@ class MediaService: Service() {
                     return
                 }
 
-                val infoName = remoteMediaClient.mediaInfo.mediaTracks?.get(0)?.name
+                val infoName = remoteMediaClient.mediaInfo?.mediaTracks?.get(0)?.name
                 Log.d(CAST_TAG, "info name: $infoName")
                 val statusName = remoteMediaClient.mediaStatus?.queueData?.name
                 Log.d(CAST_TAG, "status name: $statusName")
@@ -273,9 +322,9 @@ class MediaService: Service() {
         }
     }
 
-    private val metadataOutput: MetadataOutput by lazy {
-        MetadataOutput { metadata ->
-            Log.d(CAST_TAG, "onMetadata: $metadata")
+    private val remoteMediaClientProgressListener: RemoteMediaClient.ProgressListener by lazy {
+        RemoteMediaClient.ProgressListener { p0, p1 ->
+            Log.d(CAST_TAG, "onProgressUpdated $p0 $p1")
         }
     }
 
@@ -423,14 +472,25 @@ class MediaService: Service() {
             override fun onCastSessionAvailable() {
                 Log.d(CAST_TAG, "onCastSessionAvailable")
 
-                val remoteMediaClient = castContext?.sessionManager?.currentCastSession?.remoteMediaClient
-                remoteMediaClient?.registerCallback(remoteMediaClientCallback) ?: Log.d(CAST_TAG, "failed to register remoteMediaClientCallback")
+                val remoteMediaClient = castContext?.sessionManager?.currentCastSession?.remoteMediaClient ?: let {
+                    Log.d(CAST_TAG, "failed to find remoteMediaClient")
+                    return
+                }
 
-                loadItem()
+                remoteMediaClient.registerCallback(remoteMediaClientCallback)
+                remoteMediaClient.addProgressListener(remoteMediaClientProgressListener, TimeUnit.MILLISECONDS.toMillis(250))
             }
 
             override fun onCastSessionUnavailable() {
                 Log.d(CAST_TAG, "onCastSessionUnavailable")
+
+                val remoteMediaClient = castContext?.sessionManager?.currentCastSession?.remoteMediaClient ?: let {
+                    Log.d(CAST_TAG, "failed to find remoteMediaClient")
+                    return
+                }
+
+                remoteMediaClient.unregisterCallback(remoteMediaClientCallback)
+                remoteMediaClient.removeProgressListener(remoteMediaClientProgressListener)
                 castPlayer = null
             }
         }
@@ -609,17 +669,16 @@ class MediaService: Service() {
             Util.getUserAgent(this, "pure-fm.de (Android)")))
             .createMediaSource(Uri.parse("http://radionetz.de:8000/purefm-bln.mp3"))
 
-    // Radioeins https://rbb-dg-rbb-https-fra-dtag-cdn.sslcast.addradio.de/rbb/radioeins/live/mp3/128/stream.mp3
-
     private fun mediaQueueItem(): MediaQueueItem {
         val url  = "http://radionetz.de:8000/purefm-bln.mp3"
         val mediaMetadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MUSIC_TRACK)
-        mediaMetadata.putString(MediaMetadata.KEY_TITLE, "pure-fm.de")
+        mediaMetadata.putString(MediaMetadata.KEY_STUDIO, "Pure FM")
 
         val mediaInfo: MediaInfo = MediaInfo.Builder(url)
             .setStreamType(MediaInfo.STREAM_TYPE_LIVE)
             .setContentType(MimeTypes.AUDIO_MPEG)
-            .setMetadata(mediaMetadata).build()
+            .setMetadata(mediaMetadata)
+            .build()
 
         return MediaQueueItem.Builder(mediaInfo).build()
     }
@@ -1019,4 +1078,16 @@ fun mediaServiceIntent(context: Context,
     intent.setClass(context, MediaService::class.java)
     command?.let { intent.putExtra("command", it.ordinalInt) }
     return intent
+}
+
+class HelloWorldChannel: Cast.MessageReceivedCallback {
+  fun getNamespace(): String {
+    return "urn:x-cast:com.dermochelys.simpleradio"
+  }
+
+  override fun onMessageReceived(castDevice: CastDevice,
+                                 namespace: String,
+                                 message: String) {
+    Log.d(TAG, "onMessageReceived: $message")
+  }
 }

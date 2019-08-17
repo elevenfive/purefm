@@ -9,6 +9,9 @@ import android.util.Log
 import android.view.Menu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.mediarouter.media.MediaControlIntent
+import androidx.mediarouter.media.MediaRouteSelector
+import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastState
 import com.dermochelys.simpleradio.MediaService.Command.INIT
@@ -65,6 +68,16 @@ class MainActivity : AppCompatActivity() {
         menuInflater.inflate(R.menu.menu, menu)
 
         CastButtonFactory.setUpMediaRouteButton(applicationContext, menu, R.id.media_route_menu_item)
+
+//        val mRouter = MediaRouter.getInstance(this)
+//
+//        val mSelector = MediaRouteSelector.Builder()
+//            .addControlCategory(MediaControlIntent.CATEGORY_LIVE_AUDIO)
+//            .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
+//            .build()
+
+
+
         Log.d(CAST_TAG, "setUpMediaRouteButton")
 
         return true
