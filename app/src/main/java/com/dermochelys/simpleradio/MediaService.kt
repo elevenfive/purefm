@@ -113,7 +113,6 @@ class MediaService: Service() {
         val player = CastPlayer(castContext)
         player.playWhenReady = false
         player.addListener(castEventListener)
-        player.metadataComponent
         castPlayer = player
 
         val mediaSessionCompat = MediaSessionCompat(applicationContext, "MediaSessionCompat")
