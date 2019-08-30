@@ -22,8 +22,8 @@ class CastOptionsProvider: OptionsProvider {
         castOptionsBuilder.setStopReceiverApplicationWhenEndingSession(true)
         castOptionsBuilder.setCastMediaOptions(castMediaOptions)
 
-        p0?.getString(R.string.receiver_app_id)?.let { castOptionsBuilder.setReceiverApplicationId(it) } ?:
-            Log.d(CAST_TAG, "failed to setReceiverApplicationId")
+        p0?.getString(R.string.styled_receiver_app_id)?.let { castOptionsBuilder.setReceiverApplicationId(it) } ?:
+            Log.e(CAST_TAG, "failed to setReceiverApplicationId")
 
         return castOptionsBuilder.build()
     }

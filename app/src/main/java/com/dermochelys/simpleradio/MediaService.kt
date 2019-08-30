@@ -211,7 +211,11 @@ class MediaService: Service() {
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
 
-        castContext?.sessionManager?.removeSessionManagerListener(sessionManagerListener)
+        castContext?.let {
+            it.removeCastStateListener(casteStateListener)
+            it.sessionManager?.removeSessionManagerListener(sessionManagerListener)
+            castContext = null
+        }
 
         castPlayer?.let {
             it.stop()
@@ -675,7 +679,6 @@ class MediaService: Service() {
 
         val mediaInfo: MediaInfo = MediaInfo.Builder(url)
             .setStreamType(MediaInfo.STREAM_TYPE_LIVE)
-            .setContentType(MimeTypes.AUDIO_MPEG)
             .setMetadata(mediaMetadata)
             .build()
 

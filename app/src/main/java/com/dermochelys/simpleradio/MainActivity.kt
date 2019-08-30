@@ -9,9 +9,6 @@ import android.util.Log
 import android.view.Menu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import androidx.mediarouter.media.MediaControlIntent
-import androidx.mediarouter.media.MediaRouteSelector
-import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastState
 import com.dermochelys.simpleradio.MediaService.Command.INIT
@@ -82,11 +79,6 @@ class MainActivity : AppCompatActivity() {
 
         return true
     }
-
-    // http://radionetz.de:8000/purefm-bln.mp3
-    // stream contains mp3 metadata.  Title Genre (comma separated), Now Playing
-    //
-    // Stereo / 44.1 / 32 bits per sample, bitrate 128 kb/s
 
     private fun onButtonClick() {
         val command = if (button.isSelected) {
