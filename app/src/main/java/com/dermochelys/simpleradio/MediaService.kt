@@ -19,7 +19,13 @@ import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media.session.MediaButtonReceiver
-import com.google.android.exoplayer2.*
+import com.google.android.exoplayer2.C
+import com.google.android.exoplayer2.ExoPlaybackException
+import com.google.android.exoplayer2.ExoPlayer
+import com.google.android.exoplayer2.ExoPlayerFactory
+import com.google.android.exoplayer2.PlaybackParameters
+import com.google.android.exoplayer2.Player
+import com.google.android.exoplayer2.Timeline
 import com.google.android.exoplayer2.analytics.AnalyticsListener
 import com.google.android.exoplayer2.audio.AudioAttributes
 import com.google.android.exoplayer2.ext.cast.CastPlayer
@@ -31,10 +37,17 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.source.TrackGroupArray
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory
-import com.google.android.exoplayer2.util.MimeTypes
 import com.google.android.exoplayer2.util.Util
-import com.google.android.gms.cast.*
-import com.google.android.gms.cast.framework.*
+import com.google.android.gms.cast.Cast
+import com.google.android.gms.cast.CastDevice
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaMetadata
+import com.google.android.gms.cast.MediaQueueItem
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastState
+import com.google.android.gms.cast.framework.CastStateListener
+import com.google.android.gms.cast.framework.Session
+import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import java.io.FileDescriptor
 import java.io.IOException
@@ -760,14 +773,6 @@ class MediaService: Service() {
                 volume: Float
             ) {
                 Log.d(LOCAL_TAG, "onVolumeChanged $volume")
-            }
-
-            override fun onDecoderInputFormatChanged(
-                eventTime: AnalyticsListener.EventTime?,
-                trackType: Int,
-                format: Format?
-            ) {
-                Log.d(LOCAL_TAG, "onDecoderInputFormatChanged $format")
             }
 
             override fun onAudioSessionId(
