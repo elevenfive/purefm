@@ -15,7 +15,7 @@
             android:minWidth="200dp"
             android:minHeight="200dp"
             android:src="@drawable/media_control_button"
-            android:tint="@android:color/white"
+            app:tint="@android:color/white"
             app:layout_constraintTop_toBottomOf="@+id/logo"
             app:layout_constraintBottom_toBottomOf="parent"
             tools:ignore="ContentDescription"/>
